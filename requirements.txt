@@ -1,0 +1,11 @@
+pandas
+seaborn
+rdkit
+cobra
+typing_extensions
+setuptools
+notebook
+scipy
+macaw
+pytest
+parameterized
