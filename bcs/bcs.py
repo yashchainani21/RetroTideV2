@@ -193,7 +193,7 @@ class Cluster:
                 
         return prod
 
-    def get_atom_mapping(self, structureDB: Dict[Module, Mol]) -> List[Mol]:
+    def create_atom_maps(self, structureDB: Dict[Module, Mol]) -> List[Mol]:
         """
         Generates an atom mapping of the PKS product arising from each module of the instantiated PKS cluster object
 
