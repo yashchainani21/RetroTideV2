@@ -2,6 +2,7 @@ smiles	id	type	shortName
 CCC(=O)[S]	Methylmalonyl-CoA	CoA	mmal
 CC(=O)[S]	Malonyl-CoA	CoA	mal
 [S]C(CO)=O	Hydroxymalonyl-CoA	CoA	hmal
+C=CCC(=O)[S]	Allylmalonyl-CoA	CoA	allylmal
 CCCC(=O)[S]	butmal	CoA	butmal
 COCC(=O)[S]	mxmal	CoA	mxmal
 CC(=O)[S]	cemal	CoA	cemal
