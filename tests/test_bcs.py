@@ -427,7 +427,7 @@ class TestAT(unittest.TestCase):
         # at = AT(active=True, substrate='substrate')
         molecule = self.at_domain_methylmalonyl.operation(None, loading=True)
         assert isinstance(molecule, Chem.Mol)
-        expected_smiles = "CC(=O)[S]" # Methylmalonyl-CoA
+        expected_smiles = "CCC(=O)[S]" # Methylmalonyl-CoA
         self.assertEqual(Chem.MolToSmiles(molecule), expected_smiles)
     
     def test_operation_not_loading(self):
