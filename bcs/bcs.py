@@ -748,8 +748,8 @@ class KR(Domain):
         type (str): Specifies the type of the KR domain, which determines the stereochemistry of the reduction reaction. 
             Must be one of the specified `TYPE_CHOICES`.
     """    
-    TYPE_CHOICES = {'B1', 'B', 'C1'} # 2D change
-    # TYPE_CHOICES = {'A1', 'A2', 'A', 'B1', 'B2', 'B', 'C1', 'C2'}
+    # TYPE_CHOICES = {'B1', 'B', 'C1'} # 2D change
+    TYPE_CHOICES = {'A1', 'A2', 'A', 'B1', 'B2', 'B', 'C1', 'C2'}
     # TYPE_CHOICES = {'A1', 'A2', 'A', 'B1', 'B2', 'B', 'C1', 'C2', 'U'}
 
     def __init__(self, active: bool, type: str):
