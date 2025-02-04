@@ -201,3 +201,6 @@ def designPKS(targetMol: Mol,
     else:
         # if these designs are no better than before, just return the last round
         return previousDesigns
+
+def designPKS_onestep():
+    pass
