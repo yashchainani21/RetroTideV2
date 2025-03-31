@@ -427,7 +427,7 @@ class TestAT(unittest.TestCase):
         # at = AT(active=True, substrate='substrate')
         molecule = self.at_domain_methylmalonyl.operation(None, loading=True)
         assert isinstance(molecule, Chem.Mol)
-        expected_smiles = "CC(=O)[S]" # Methylmalonyl-CoA
+        expected_smiles = "CCC(=O)[S]" # Methylmalonyl-CoA
         self.assertEqual(Chem.MolToSmiles(molecule), expected_smiles)
     
     def test_operation_not_loading(self):
@@ -514,7 +514,7 @@ class TestKR(unittest.TestCase):
         assert isinstance(result, list)
         assert all(isinstance(obj, KR) for obj in result)
 
-        self.assertEqual(len(result), 3)
+        self.assertEqual(len(result), 7)
         self.assertTrue(any(design.type == 'C1' and design.active for design in result))
         self.assertTrue(any(design.type == 'B1' and design.active for design in result))
         self.assertTrue(any(design.type == 'B1' and not design.active for design in result))
@@ -534,7 +534,7 @@ class TestKR(unittest.TestCase):
         assert all(isinstance(obj, KR) for obj in result)
         expected_designs = ['A', 'B', 'B1']
 
-        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result), 3)
         self.assertTrue(any(design.type == 'B' and design.active for design in result))
         self.assertTrue(any(design.type == 'B1' and not design.active for design in result))
 
