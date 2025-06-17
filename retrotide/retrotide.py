@@ -34,12 +34,16 @@ from mapchiral.mapchiral import encode, jaccard_similarity
 
 
 def run_pks_release_reaction(pks_release_mechanism: str,
-                             bound_product_mol: Chem.Mol) -> Chem.Mol:
+                             bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]
     """
     Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase or a cyclization reaction
     """
     if pks_release_mechanism == "thiolysis":
-        pass
+        Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to produce terminal acid group
+        rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1](=[O:2])[O].[S:3]')
+        unbound_product_mol = rxn.RunReactants((bound_product_mol,))[0][0]
+        Chem.SanitizeMol(unbound_product_mol)
+        return unbound_product_mol
 
     if pks_release_mechanism == "cyclization":
         pass
