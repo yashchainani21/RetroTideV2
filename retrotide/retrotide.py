@@ -37,6 +37,14 @@ def run_pks_release_reaction(pks_release_mechanism: str,
                              bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]
     """
     Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase, thiolysis or a cyclization reaction
+
+    Args:
+        pks_release_mechanism (str): the offloading reaction to use when release a bound PKS product; choose from 'thiolysis', 'cyclization', and 'reduction'.
+        bound_product_mol (Chem.Mol): mol object representing the bound PKS product or intermediate.
+
+    Returns:
+        Chem.Mol: mol object representing the released PKS product or intermediate.
+        None: or None returned if the termination reaction is not possible (typically occurs with cyclization reactions)
     """
     if pks_release_mechanism == "thiolysis":
         Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to produce terminal acid group
@@ -58,12 +66,36 @@ def run_pks_release_reaction(pks_release_mechanism: str,
             return None
 
     if pks_release_mechanism == "reduction":
-        Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to cyclize bound substrate
+        Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to fully reduce the bound substrate
         rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1]')
         unbound_product_mol = rxn.RunReactants((bound_product_mol,))[0][0]
         Chem.SanitizeMol(unbound_product_mol)
         return unbound_product_mol
 
+def getSubmolRadN(mol: Chem.Mol,
+                  radius: int) -> List[Chem.Mol]:
+    """
+    Iterate over all atoms in a molecule to collect subgraphs of radius N that can be extracted around each atom.
+
+    Args:
+        mol (Chem.Mol): mol object of an input molecule from which to extract subgraphs.
+        radius (int): 
+    """
+    
+    # initialize an empty list to store all subgraphs
+    submols = []
+    
+    atoms = mol.GetAtoms()
+
+    for atom in atoms:
+        env = Chem.FindAtomEnvironmentOfRadiusN(mol, radius, atom.GetIdx())
+        amap = {}
+        submol = Chem.PathToSubmol(mol, env, atomMap=amap)
+        subsmi = Chem.MolToSmiles(submol, rootedAtAtom=amap[atom.GetIdx()], canonical=False)
+        submols.append(Chem.MolFromSmiles(subsmi, sanitize=False))
+    return submols
+
+        
 def compareToTarget(structure: Mol,
                     target: Mol,
                     similarity: Union[str, Callable] = 'atompairs',
