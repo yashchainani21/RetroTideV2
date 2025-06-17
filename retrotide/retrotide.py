@@ -79,7 +79,10 @@ def getSubmolRadN(mol: Chem.Mol,
 
     Args:
         mol (Chem.Mol): mol object of an input molecule from which to extract subgraphs.
-        radius (int): 
+        radius (int): radius or number of bonds around an atom from which subgraphs should be extracted.
+
+    Returns:
+        List[Chem.Mol]: list of mol objects representing all extracted subgraphs.
     """
     
     # initialize an empty list to store all subgraphs
@@ -95,7 +98,30 @@ def getSubmolRadN(mol: Chem.Mol,
         submols.append(Chem.MolFromSmiles(subsmi, sanitize=False))
     return submols
 
-        
+def are_isomorphic(mol1: Chem.Mol,
+                   mol2: Chem.Mol,
+                   consider_stereo: bool = False) -> bool:
+    """
+    Compare two molecules to determine if they are equivalent and identical.
+
+    Args:
+        mol1 (Chem.Mol): mol object of first molecule.
+        mol2 (Chem.Mol): mol object of second molecule.
+
+    Returns:
+        bool: returns True if both molecules are identical and False if otherwise.
+    """
+    
+    if consider_stereo:
+        is_isomorphic = mol1.HasSubstructMatch(mol2, useChirality=True) and mol2.HasSubstructMatch(mol1,
+                                                                                                       useChirality=True)
+    else:
+        is_isomorphic = mol1.HasSubstructMatch(mol2) and mol2.HasSubstructMatch(mol1)
+
+    return is_isomorphic
+
+
+
 def compareToTarget(structure: Mol,
                     target: Mol,
                     similarity: Union[str, Callable] = 'atompairs',
