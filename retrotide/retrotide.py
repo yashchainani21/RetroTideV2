@@ -182,14 +182,42 @@ def is_PKS_product_in_bag_of_graphs(bag_of_graphs: List[Chem.Mol],
     Check if a PKS product or intermediate that is still bound to its synthase is present in the bag of subgraphs generated from the final target molecule.
     Given an input PKS product or intermediate, this molecule is first released from its bound state by running all three possible offloading reactions.
     Then, we check if this unbound 
+
+    Args:
+        bag_of_graphs (List[Chem.Mol]): bag of subgraphs obtained from iterating over all atoms in the final target molecule.
+        PKS_product (Chem.Mol): mol object of the 
     """
 
-    acid_product = run_pks_release_reaction(pks_release_mechanism = 'thiolysis')
-    fully_reduced_product = run_pks_release_reaction(pks_release_mechanism = 'reduction')
-    cyclized_product = run_pks_release_reaction(pks_release_mechanism = 'cyclization')
+    acid_product = run_pks_release_reaction(pks_release_mechanism = 'thiolysis', bound_product_mol = PKS_product)
+    fully_reduced_product = run_pks_release_reaction(pks_release_mechanism = 'reduction', bound_product_mol = PKS_product)
+    cyclized_product = run_pks_release_reaction(pks_release_mechanism = 'cyclization', bound_product_mol = PKS_product)
 
+    # iterate over all subgraphs derived from the target and stored within bag_of_graphs
     for submol in bag_of_graphs:
-        if are_isomorphic()
+
+        # check if a given subgraph is equivalent to the acid product obtained from offloading
+        if are_isomorphic(acid_product, submol):
+            
+            # terminate early if acid product is a full subgraph of the target molecule
+            return True 
+        
+        # check if a given subgraph is equivalent to the fully reduced product obtained from offloading
+        if are_isomorphic(fully_reduced_product, submol):
+
+            # terminate early if the fully reduced product is a full subgraph of the target molecule
+            return True
+
+        # check if a cyclized product has formed
+        if cyclized_product:
+
+            # now check if a given subgraph is equivalent to the cyclized product obtained from offloading
+            if are_isomorphic(cyclized_product, submol):
+
+                # terminate early if the cyclized product is a full subgraph of the target molecule
+                return True
+
+    # return False if no match is found
+    return False
 
 
 #######################
@@ -199,7 +227,8 @@ def is_PKS_product_in_bag_of_graphs(bag_of_graphs: List[Chem.Mol],
 def compareToTarget(structure: Mol,
                     target: Mol,
                     similarity: Union[str, Callable] = 'atompairs',
-                    targetpathintegers=None) -> float:
+                    targetpathintegers = None,
+                    bag_of_graphs: Optional[List[Chem.Mol]] = None) -> float:
     """
     Compares a given structure to a target molecule to determine their similarity.
 
@@ -211,7 +240,7 @@ def compareToTarget(structure: Mol,
         target (rdchem.Mol): The target molecule for comparison.
         similarity (Union[str, Callable], optional): The type of similarity metric to use. Can be 'mcs' for maximum
             common substructure, 'atompairs' for atom pair similarity, 'atomatompath' for atom-atom path similarity,
-            'MAPC' for Min-hashed Atom Pair Chiral Fingerprints, 
+            'MAPC' for Min-hashed Atom Pair Chiral Fingerprints, 'full_subgraph_mcs' for subgraph modified mcs,
             or a custom callable function taking two rdchem.Mol objects and returning a similarity score as a float.
             Defaults to 'atompairs'.
 
@@ -227,7 +256,7 @@ def compareToTarget(structure: Mol,
     # remove C(=O)S from testProduct before comparison
     testProduct = Chem.rdmolops.ReplaceSubstructs(structure, Chem.MolFromSmiles('C(=O)S'), Chem.MolFromSmiles('C'))[0]
     
-    if similarity=='mcs':
+    if similarity == 'mcs':
         # MCS
         result=rdFMCS.FindMCS([target, testProduct], timeout=1, matchValences=True, matchChiralTag=True, 
                               bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact) # search for 1 second max
@@ -236,7 +265,7 @@ def compareToTarget(structure: Mol,
             print('MCS timeout')
         score = result.numAtoms / (testProduct.GetNumAtoms() + target.GetNumAtoms() - result.numAtoms)
     
-    elif similarity=='mcs_without_stereo':
+    elif similarity == 'mcs_without_stereo':
         # same as above but without matching stereochemistry
         result=rdFMCS.FindMCS([target, testProduct], timeout=1, matchValences=True, matchChiralTag=False,
                               bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact) # search for 1 second max
@@ -245,21 +274,41 @@ def compareToTarget(structure: Mol,
             print('MCS timeout')
         score = result.numAtoms / (len(testProduct.GetAtoms()) + len(target.GetAtoms()) - result.numAtoms)
 
-    elif similarity=='atompairs':
+    elif similarity == 'atompairs':
         # atom pair
         ms = [target, testProduct]
         pairFps = [Pairs.GetAtomPairFingerprint(x) for x in ms]
         score = DataStructs.TanimotoSimilarity(pairFps[0],pairFps[1]) # can also try DiceSimilarity
         
-    elif similarity=='atomatompath':
+    elif similarity == 'atomatompath':
         score = AtomAtomPathSimilarity(target, testProduct, m1pathintegers=targetpathintegers)
 
-    elif similarity=='MAPC': # Min-hashed Atom Pair Chiral Fingerprints (https://github.com/reymond-group/mapchiral)
+    elif similarity == 'MAPC': # Min-hashed Atom Pair Chiral Fingerprints (https://github.com/reymond-group/mapchiral)
 
         # compute chiral fingerprints of target and testProduct then get their jaccard similarity
         target_fp = encode(target, max_radius=2, n_permutations=2048, mapping=False)
         testProduct_fp = encode(testProduct, max_radius=2, n_permutations=2048, mapping=False)
         score = jaccard_similarity(target_fp, testProduct_fp)
+
+    elif similarity == 'full_subgraph_mcs': 
+
+        # here, check if an intermediate is in the bag of graphs created from the target molecule
+
+        if is_PKS_product_in_bag_of_graphs(bag_of_graphs = bag_of_graphs, 
+                                           PKS_product = structure):
+
+            # if the PKS product/ intermediate is a full subgraph of the target molecule, 
+            # then we calculate an MCS score so that the recursive call to RetroTide has a way to rank intermediate PKS designs
+            result=rdFMCS.FindMCS([target, testProduct], timeout=1, matchValences=True, matchChiralTag=False,
+                              bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact) # search for 1 second max
+
+            if result.canceled:
+                print('MCS timeout')
+            score = result.numAtoms / (len(testProduct.GetAtoms()) + len(target.GetAtoms()) - result.numAtoms)
+        
+        # if an intermediate is not in the bag of graphs, then we assign it a score of 0 to eliminate the associated PKS design
+        else:
+            score = 0
 
     elif callable(similarity):
         score = similarity(target, testProduct)
@@ -303,7 +352,11 @@ def designPKS(targetMol: Mol,
         final_designs = designPKS(target_molecule)
         print(final_designs[-1][0][1]) # Best score from the final round
         best_pks = final_designs[-1][0][0]) # Best PKS from the final round
-    """      
+    """
+
+    # always create a bag of graphs by default even if the similarity metrics other than subgraph_similarity are used
+    bag_of_graphs = create_bag_of_graphs_from_target(targetMol)
+
     targetpathintegers = None
     if previousDesigns is not None:
         print('computing module ' + str(len(previousDesigns)))
@@ -335,7 +388,7 @@ def designPKS(targetMol: Mol,
     structures: List[Mol] = [design.computeProduct(structureDB, chain=prevStructure) for design, prevStructure in zip(designs, prevStructures)]
 
     # compare modules to target
-    scores: List[float] = [compareToTarget(structure, targetMol, similarity, targetpathintegers) for structure in structures]
+    scores: List[float] = [compareToTarget(structure, targetMol, similarity, targetpathintegers, bag_of_graphs) for structure in structures]
     
     # assemble scores
     assembledScores: List[Tuple[Cluster, float, Mol]] = list(zip(designs, scores, structures))
