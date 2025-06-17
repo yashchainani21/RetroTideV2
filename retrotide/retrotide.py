@@ -32,6 +32,9 @@ from bcs import Cluster, Module
 from .AtomAtomPathSimilarity import getpathintegers, AtomAtomPathSimilarity
 from mapchiral.mapchiral import encode, jaccard_similarity
 
+##########################################
+#  helper functions for subgraph pruning #
+##########################################
 
 def run_pks_release_reaction(pks_release_mechanism: str,
                              bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]
@@ -120,7 +123,78 @@ def are_isomorphic(mol1: Chem.Mol,
 
     return is_isomorphic
 
+def create_bag_of_graphs_from_target(target: Chem.Mol) -> List[Chem.Mol]:
+    """
+    Create a bag of subgraphs from the target molecule. 
 
+    Args:
+        target (Chem.Mol): mol object of the target molecule.
+
+    Returns:
+        List[Chem.Mol]: list of mol objects representing subgraphs created from the target molecule.
+    """
+
+    # first, we get the longest distance between any two atoms within the target molecule
+    dist_matrix = rdmolops.GetDistanceMatrix(target)
+    dist_array = np.array(dist_matrix)
+    longest_distance = dist_array.max()
+
+    # using this longest distance, create a bag of graphs by decomposing the target molecule across various lengths
+    all_submols = []
+    for i in range(1, int(longest_distance + 1)):
+        try:
+            submols = getSubmolRadN(mol = target, radius = i)
+            all_submols.extend(submols)
+        except:
+            pass
+
+    # next, check if the input target is a cyclic ester (lactone)
+    lactone_group = Chem.MolFromSmarts('[C;R](=O)[O;R]')
+    if target.HasSubstructMatch(lactone_group):
+
+        # if it is, then we run a ring opening reaction to simulate the action of a cyclic TE acting in reverse
+        ring_opening_rxn_pattern = '[C:1](=[O:2])[*:4][C:5][C:6]>>([C:1](=[O:2])[O:3].[O,N:4][C:5][C:6])'
+        ring_opening_rxn = AllChem.ReactionFromSmarts(ring_opening_rxn_pattern)
+        ring_opened_target = ring_opening_rxn.RunReactants((target,))[0][0]
+
+        # then, run the subgraph collection algorithm again on the ring opened target
+        dist_matrix = rdmolops.GetDistanceMatrix(ring_opened_target)
+        dist_array = np.array(dist_matrix)
+        longest_distance = dist_array.max()
+
+        for i in range(1, int(longest_distance + 1)):
+            try:
+                submols = getSubmolRadN(mol = ring_opened_target, radius = i)
+                all_submols.extend(submols)
+            except:
+                pass
+
+    # do nothing if the input target is not a cyclic ester
+    else:
+        pass
+
+    return all_submols
+
+def is_PKS_product_in_bag_of_graphs(bag_of_graphs: List[Chem.Mol],
+                                    PKS_product: Chem.Mol,
+                                    consider_stereo: bool = False) -> bool:
+    """
+    Check if a PKS product or intermediate that is still bound to its synthase is present in the bag of subgraphs generated from the final target molecule.
+    Given an input PKS product or intermediate, this molecule is first released from its bound state by running all three possible offloading reactions.
+    Then, we check if this unbound 
+    """
+
+    acid_product = run_pks_release_reaction(pks_release_mechanism = 'thiolysis')
+    fully_reduced_product = run_pks_release_reaction(pks_release_mechanism = 'reduction')
+    cyclized_product = run_pks_release_reaction(pks_release_mechanism = 'cyclization')
+
+    for submol in bag_of_graphs:
+        if are_isomorphic()
+
+
+#######################
+# main RetroTide code #
+#######################
 
 def compareToTarget(structure: Mol,
                     target: Mol,
@@ -198,7 +272,7 @@ def compareToTarget(structure: Mol,
 def designPKS(targetMol: Mol,
               previousDesigns: Optional[List[Tuple[Cluster, float, Mol]]] = None, 
               maxDesignsPerRound: int = 25,
-              similarity: str = 'atompairs') -> List[List[Any]]:
+              similarity: str = 'mcs_without_stereo') -> List[List[Any]]:
     """
     Designs polyketide synthases (PKS) modules to match a target molecule.
 
@@ -212,7 +286,7 @@ def designPKS(targetMol: Mol,
             If None, the function starts a new design process. Defaults to None.
         maxDesignsPerRound (int, optional): The maximum number of designs to consider per round. Defaults to 25.
         similarity (str, optional): The similarity metric to use for comparing designs to the target molecule.
-            Supported values are 'atompairs' and 'atomatompath'. Defaults to 'atompairs'.
+            Supported values are 'atompairs', atomatompath', 'mcs', 'mcs_without_stereo', and 'MAPC'. Defaults to 'mcs_without_stereo'.
 
     Returns:
         List[List[Any]]: A list of design rounds, where each round is a list of designs. Each design includes the
