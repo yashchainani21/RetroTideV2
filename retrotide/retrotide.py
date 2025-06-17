@@ -32,6 +32,21 @@ from bcs import Cluster, Module
 from .AtomAtomPathSimilarity import getpathintegers, AtomAtomPathSimilarity
 from mapchiral.mapchiral import encode, jaccard_similarity
 
+
+def run_pks_release_reaction(pks_release_mechanism: str,
+                             bound_product_mol: Chem.Mol) -> Chem.Mol:
+    """
+    Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase or a cyclization reaction
+    """
+    if pks_release_mechanism == "thiolysis":
+        pass
+
+    if pks_release_mechanism == "cyclization":
+        pass
+
+    if pks_release_mechanism == "reduction":
+        pass
+
 def compareToTarget(structure: Mol,
                     target: Mol,
                     similarity: Union[str, Callable] = 'atompairs',
