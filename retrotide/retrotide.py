@@ -16,11 +16,11 @@ Example:
     print(final_designs[-1][0][1]) # Prints the best score from the final round
     best_pks = final_designs[-1][0][0] # Retrieves the best PKS design from the final round
 
-@author: Tyler Backman, Vincent Blay
+@authors: Tyler Backman, Vincent Blay, Yash Chainani
 """
-
+import numpy as np
 from rdkit import Chem
-from rdkit.Chem import rdFMCS
+from rdkit.Chem import AllChem, rdmolops, rdFMCS
 from rdkit import DataStructs
 from rdkit.Chem.AtomPairs import Pairs
 from rdkit.Chem.rdchem import Mol
@@ -37,7 +37,7 @@ from mapchiral.mapchiral import encode, jaccard_similarity
 ##########################################
 
 def run_pks_release_reaction(pks_release_mechanism: str,
-                             bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]
+                             bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]:
     """
     Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase, thiolysis or a cyclization reaction
 
@@ -240,7 +240,7 @@ def compareToTarget(structure: Mol,
         target (rdchem.Mol): The target molecule for comparison.
         similarity (Union[str, Callable], optional): The type of similarity metric to use. Can be 'mcs' for maximum
             common substructure, 'atompairs' for atom pair similarity, 'atomatompath' for atom-atom path similarity,
-            'MAPC' for Min-hashed Atom Pair Chiral Fingerprints, 'full_subgraph_mcs' for subgraph modified mcs,
+            'MAPC' for Min-hashed Atom Pair Chiral Fingerprints, 'subgraph_modified_mcs' for subgraph modified mcs,
             or a custom callable function taking two rdchem.Mol objects and returning a similarity score as a float.
             Defaults to 'atompairs'.
 
@@ -290,7 +290,7 @@ def compareToTarget(structure: Mol,
         testProduct_fp = encode(testProduct, max_radius=2, n_permutations=2048, mapping=False)
         score = jaccard_similarity(target_fp, testProduct_fp)
 
-    elif similarity == 'full_subgraph_mcs': 
+    elif similarity == 'subgraph_modified_mcs': 
 
         # here, check if an intermediate is in the bag of graphs created from the target molecule
 
