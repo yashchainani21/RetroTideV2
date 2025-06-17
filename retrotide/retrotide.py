@@ -36,7 +36,7 @@ from mapchiral.mapchiral import encode, jaccard_similarity
 def run_pks_release_reaction(pks_release_mechanism: str,
                              bound_product_mol: Chem.Mol) -> Optional[Chem.Mol]
     """
-    Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase or a cyclization reaction
+    Run a PKS offloading reaction to release a PKS product bound to its synthase via either a thioreductase, thiolysis or a cyclization reaction
     """
     if pks_release_mechanism == "thiolysis":
         Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to produce terminal acid group
@@ -46,10 +46,23 @@ def run_pks_release_reaction(pks_release_mechanism: str,
         return unbound_product_mol
 
     if pks_release_mechanism == "cyclization":
-        pass
+        Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to cyclize bound substrate
+        rxn = AllChem.ReactionFromSmarts('([C:1](=[O:2])[S:3].[O,N:4][C:5][C:6])>>[C:1](=[O:2])[*:4][C:5][C:6].[S:3]')
+        try:
+            unbound_product_mol = rxn.RunReactants((bound_product_mol,))[0][0]
+            Chem.SanitizeMol(unbound_product_mol)
+            return unbound_product_mol
+
+        # if the bound substrate cannot be cyclized, then return None
+        except:
+            return None
 
     if pks_release_mechanism == "reduction":
-        pass
+        Chem.SanitizeMol(bound_product_mol)  # run detachment reaction to cyclize bound substrate
+        rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1]')
+        unbound_product_mol = rxn.RunReactants((bound_product_mol,))[0][0]
+        Chem.SanitizeMol(unbound_product_mol)
+        return unbound_product_mol
 
 def compareToTarget(structure: Mol,
                     target: Mol,
