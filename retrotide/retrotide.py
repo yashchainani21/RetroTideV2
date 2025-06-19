@@ -18,6 +18,8 @@ Example:
 
 @authors: Tyler Backman, Vincent Blay, Yash Chainani
 """
+import multiprocessing as mp
+import time
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdmolops, rdFMCS
@@ -28,7 +30,7 @@ import itertools
 from typing import Union, Callable, List, Optional, Any, Tuple
 
 from .extras import allStarterTypes, allModuleTypes, structureDB
-from bcs import Cluster, Module
+from bcs import Cluster, Module, Domain
 from .AtomAtomPathSimilarity import getpathintegers, AtomAtomPathSimilarity
 from mapchiral.mapchiral import encode, jaccard_similarity
 
@@ -224,6 +226,38 @@ def is_PKS_product_in_bag_of_graphs(bag_of_graphs: List[Chem.Mol],
 # main RetroTide code #
 #######################
 
+def safe_computeProduct(args):
+    """
+    Safely run computeProduct for each design, using global structureDB.
+    """
+    design, prevStructure = args
+    try:
+        return design.computeProduct(structureDB, chain=prevStructure)
+    except KeyError:
+        return None
+
+def compareToTarget_wrapper(args):
+    structure, targetMol, similarity, targetpathintegers, bag_of_graphs = args
+    return compareToTarget(structure, targetMol, similarity, targetpathintegers, bag_of_graphs)
+
+def check_constraints(args):
+    idx, cluster_score_mol_tuple, module_constraints = args
+    cluster_object, score, _ = cluster_score_mol_tuple
+    modules_list: List[Module] = cluster_object.modules
+    domains_list: List[List[Domain]] = [list(x.domains.keys()) for x in modules_list]
+
+    try:
+        if module_constraints[len(domains_list)] is not None:
+            if domains_list == module_constraints[0:len(domains_list)]:
+                return idx, True
+            else:
+                return idx, False
+        else:
+            print(f'No module constraints provided for module {len(domains_list)} - skipping')
+            return idx, True
+    except IndexError:
+        return idx, False
+
 def compareToTarget(structure: Mol,
                     target: Mol,
                     similarity: Union[str, Callable] = 'atompairs',
@@ -310,6 +344,43 @@ def compareToTarget(structure: Mol,
         else:
             score = 0
 
+    elif similarity == 'mcs_tversky':
+
+        alpha = 0.2
+        beta = 1.0
+        
+        exact_bonds = True
+
+        params = rdFMCS.MCSParameters()
+        params.Timeout          = True
+        params.MatchValences    = True
+        params.MatchChiralTag   = False      # stereo-agnostic; set True if needed
+        params.BondCompare      = (rdFMCS.BondCompare.CompareOrderExact
+                                if exact_bonds
+                                else rdFMCS.BondCompare.CompareAny)
+        
+        result = rdFMCS.FindMCS([target, testProduct], params)
+        if result.canceled:
+            return 0.0                         # timeout → similarity 0
+        
+        # --- Tversky on atom counts ------------------------------------------
+        mcs_atoms = result.numAtoms
+        a_atoms   = target.GetNumAtoms()
+        b_atoms   = testProduct.GetNumAtoms()
+        
+        score   = mcs_atoms / (mcs_atoms +
+                                alpha * (a_atoms - mcs_atoms) +
+                                beta  * (b_atoms - mcs_atoms))
+    
+    elif similarity == 'num_overlapped_bonds':
+        result=rdFMCS.FindMCS([target, testProduct], timeout=1, matchValences=True, matchChiralTag=False,
+                              bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact) # search for 1 second max
+
+        if result.canceled:
+            print('MCS timeout')
+
+        score = result.numBonds 
+    
     elif callable(similarity):
         score = similarity(target, testProduct)
     
@@ -331,9 +402,12 @@ def designPKS(targetMol: Mol,
 
     Args:
         targetMol (Mol): The target molecule for the PKS design.
+        
         previousDesigns (Optional[List[List[Any]]], optional): A list of previous design rounds to continue from.
             If None, the function starts a new design process. Defaults to None.
+        
         maxDesignsPerRound (int, optional): The maximum number of designs to consider per round. Defaults to 25.
+        
         similarity (str, optional): The similarity metric to use for comparing designs to the target molecule.
             Supported values are 'atompairs', atomatompath', 'mcs', 'mcs_without_stereo', and 'MAPC'. Defaults to 'mcs_without_stereo'.
 
@@ -392,6 +466,14 @@ def designPKS(targetMol: Mol,
     
     # assemble scores
     assembledScores: List[Tuple[Cluster, float, Mol]] = list(zip(designs, scores, structures))
+
+    # filter out zero-score designs first
+    assembledScores = [x for x in assembledScores if x[1] != 0]
+
+    # if all scores were 0, then stop recursion
+    if not assembledScores:
+        print('all designs scored 0 - stopping recursion')
+        return previousDesigns
     
     # sort designs by score
     assembledScores.sort(reverse=True, key=lambda x: x[1])
@@ -416,5 +498,111 @@ def designPKS(targetMol: Mol,
                          maxDesignsPerRound=maxDesignsPerRound, similarity=similarity)
     
     else:
+        # if these designs are no better than before, just return the last round
+        return previousDesigns
+
+def designPKS_with_module_constraints(targetMol: Mol,
+                                      module_constraints: List[List[Domain]],   
+                                      previousDesigns: Optional[List[Tuple[Cluster, float, Mol]]] = None,
+                                      maxDesignsPerRound: int = 25,
+                                      similarity: str = 'mcs_without_stereo') -> List[List[Any]]:
+
+    # always create a bag of graphs by default even if the similarity metrics other than subgraph_similarity are used
+    bag_of_graphs = create_bag_of_graphs_from_target(targetMol)
+
+    targetpathintegers = None
+    if previousDesigns is not None:
+        print('computing module ' + str(len(previousDesigns)))
+    else:
+        print('computing module 1')
+        if similarity=='atomatompath':
+            targetpathintegers = getpathintegers(targetMol)
+
+    # design loading module first if no previous designs have been provided
+    if not previousDesigns:
+        initial_designs = []
+        for starter in allStarterTypes:
+            cluster = Cluster(modules=[starter])
+            product = cluster.computeProduct(structureDB) 
+            initial_designs.append((cluster, 0.0, product))
+        previousDesigns = [initial_designs]
+
+    # filter allModuleTypes based on input module constraints for this design round
+    if len(previousDesigns) >= len(module_constraints):
+        print("Exceeded number of specified module constraints - stopping recursion.")
+        return previousDesigns
+
+    current_module_num: int = len(previousDesigns)
+    allowed_domains: Optional[List[Domain]] = module_constraints[current_module_num]
+    filtered_module_types: List[Module] = []
+    
+    if allowed_domains is not None:
+        for ModuleType in allModuleTypes:
+            if list(ModuleType.domains) == allowed_domains:
+                filtered_module_types.append(ModuleType)
+    else:
+        filtered_module_types = allModuleTypes
+
+    # Combine the last round of designs with the filtered module types to create extended sets
+    last_round_designs = previousDesigns[-1]
+    extendedSets = list(itertools.product(last_round_designs, filtered_module_types))
+
+    # perform each extension
+    designs: List[Cluster] = [Cluster(modules=x[0][0].modules + [x[1]]) for x in extendedSets]
+    print('   testing ' + str(len(designs)) + ' designs')
+
+    # compute structures with multiprocessing
+    prevStructures: List[Mol] = [x[0][2] for x in extendedSets]
+    
+    start_time = time.time()
+    with mp.Pool(processes = mp.cpu_count()) as pool:
+        
+        results = pool.map(safe_computeProduct, 
+                           [(design, prevStructure) for design, prevStructure in zip(designs, prevStructures)])
+
+    structures = [r for r in results if r is not None] 
+    end_time = time.time()
+    print(f'   time to compute structures: {end_time - start_time:.2f} seconds')
+
+    # compare intermediate molecule to target molecule and score designs
+    start_time = time.time()
+    with mp.Pool(processes = mp.cpu_count()) as pool:
+        job_args = [(structure, targetMol, similarity, targetpathintegers, bag_of_graphs) for structure in structures]
+        scores: List[float] = pool.map(compareToTarget_wrapper, job_args)
+    end_time = time.time()
+    print(f'   time to compare to target: {end_time - start_time:.2f} seconds')
+
+    # assemble scores 
+    assembledScores: List[Tuple[Cluster, float, Mol]] = list(zip(designs, scores, structures))
+
+    # if all scores were 0, then stop recursion
+    if not assembledScores:
+        print('all designs scored 0 - stopping recursion')
+        return previousDesigns
+    
+    # sort designs by score
+    assembledScores.sort(reverse=True, key=lambda x: x[1])
+    bestPreviousScore: float = previousDesigns[-1][0][1] # best score from previous design round
+    bestCurrentScore: float = assembledScores[0][1]# # best score from current round
+    
+    print('   best score is ' + str(bestCurrentScore))
+
+    if bestCurrentScore > bestPreviousScore:
+        # run another round if the scores are still improving
+        
+        # keep just top designs for the next round
+        if len(assembledScores) > maxDesignsPerRound:
+            assembledScores = assembledScores[0:maxDesignsPerRound]
+        
+        # recursively call self
+        return designPKS_with_module_constraints(targetMol = targetMol, 
+                                                 module_constraints = module_constraints,
+                                                 previousDesigns = previousDesigns + [assembledScores], 
+                                                 maxDesignsPerRound = maxDesignsPerRound, 
+                                                 similarity = similarity)
+    
+    else:
+        # print a message if the scores are not improving
+        print('   scores are not improving - stopping recursion')
         # if these designs are no better than before, just return the last round
         return previousDesigns
