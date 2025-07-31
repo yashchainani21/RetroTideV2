@@ -22,17 +22,20 @@ def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
             bcs.extenders.pop(key, None)
     return
 
-modify_bcs_starters_extenders(starter_codes = ['prop'], extender_codes = ['Methylmalonyl-CoA'])
-from retrotide import structureDB, designPKS
+modify_bcs_starters_extenders(starter_codes = ['trans-1,2-CPDA'],
+                              extender_codes = ['Malonyl-CoA',
+                                                'Methylmalonyl-CoA'])
+from retrotide import structureDB, designPKS, compareToTarget
 from stereopostprocessing import atommappks
 
 def canonicalize_smiles(molecule_str: str, stereo: str) -> str:
     '''
-    Standardizes a SMILES string and returns its canonical form with the specified isomeric information.
+    Standardizes a SMILES string and returns its canonical form with the
+    specified isomeric information.
     
     Args:
         molecule_str (str): The SMILES string of the target molecule
-        stereo (str): The type of stereochemistry specified in the output string
+        stereo (str): The type of stereochemistry to specify
 
     Returns:
         str: The canonicalized SMILES string.
@@ -68,35 +71,39 @@ def initial_pks(target: str) -> tuple[list, Chem.Mol]:
     mol = designs[-1][0][0].computeProduct(structureDB)
     return pks_design, mol
 
-def module_mapping(pks_design) -> Chem.Mol:
+def module_mapping(pks_design: list) -> Chem.Mol:
     '''
-    Maps atoms of the PKS product to each module in the PKS design
+    Maps atoms of the PKS product to each module in the PKS design.
 
     Args:
-        pks_design (bcs object): The RetroTide proposed PKS design
+        pks_design (list): The RetroTide proposed PKS design
 
     Returns:
-        mapped_mol (Chem.Mol): An atom-module mapped PKS product
+        mapped_product (Chem.Mol): An atom-module mapped PKS product
     '''
     cluster = bcs.Cluster(modules = pks_design)
-    mapped_mol = atommappks.create_atom_maps(cluster)[-1]
-    return mapped_mol
+    mapped_product = atommappks.create_atom_maps(cluster)[-1]
+    return mapped_product
 
 def find_ring_size(target: Chem.Mol) -> int:
     '''
     Finds the size of the largest ring in the target molecule.
 
+    Args:
+        target (Chem.Mol): The target molecule
+
     Returns:
-        ring_size (int): The number of bonds in the largest ring of the target molecule.
+        ring_size (int): The number of bonds in the largest ring found
     '''
     ring_info = target.GetRingInfo()
     
     if not ring_info.AtomRings():
         return 0
     
+    # Calculates the number of atoms in the largest ring
     largest_ring = max(ring_info.AtomRings(), key=len)
 
-    #Calculate the number of bonds in the largest ring
+    # Calculate the number of bonds in the largest ring
     ring_size = len(largest_ring) - 1
     return ring_size
 
@@ -108,14 +115,14 @@ def offload_pks_product(pks_product: Chem.Mol, target: Chem.Mol, pks_release_mec
         pks_product (Chem.Mol): The PKS bound product
         target (Chem.Mol): The target molecule
         pks_release_mechanism (str): The mechanism to use for offloading the PKS product
+            Options are 'thiolysis' or 'cyclization'
 
     Returns:
-        unbound_mol (Chem.Mol): The unbound PKS product after offloading
+        unbound_mol (Chem.Mol): The unbound PKS product
     '''
     if pks_release_mechanism == 'thiolysis':
         Chem.SanitizeMol(pks_product)  
-
-        rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1](=[O:2])[O].[S:3]') # run detachment reaction to produce terminal acid group
+        rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1](=[O:2])[O].[S:3]')
         products = rxn.RunReactants((pks_product,))
 
         if not products:
@@ -128,22 +135,23 @@ def offload_pks_product(pks_product: Chem.Mol, target: Chem.Mol, pks_release_mec
 
     if pks_release_mechanism == 'cyclization':
         Chem.SanitizeMol(pks_product)
-
         target_ring_size = find_ring_size(target)
+
         print(f"Target ring size: {target_ring_size}")
         
         thioester_pattern = '[C:1](=[O:2])[S:3]'
-        thioester_matches = pks_product.GetSubstructMatches(Chem.MolFromSmarts(thioester_pattern))
+        thioester_matches = pks_product.GetSubstructMatches(
+            Chem.MolFromSmarts(thioester_pattern))
+        
         carbonyl_carbon = thioester_matches[0][0]
         
         hydroxyl_pattern = '[OH1]'
-        hydroxyl_matches = pks_product.GetSubstructMatches(Chem.MolFromSmarts(hydroxyl_pattern))
+        hydroxyl_matches = pks_product.GetSubstructMatches(
+            Chem.MolFromSmarts(hydroxyl_pattern))
 
         if not hydroxyl_matches:
             print("Warning: No hydroxyl groups found")
             return (pks_product,)
-        
-        print(f"Found {len(hydroxyl_matches)} hydroxyl groups to try cyclization with")
         
         # Look for hydroxyl at the same distance as the target ring size
         for i, hydroxyl in enumerate(hydroxyl_matches):
@@ -153,13 +161,10 @@ def offload_pks_product(pks_product: Chem.Mol, target: Chem.Mol, pks_release_mec
             try:
                 path = Chem.GetShortestPath(pks_product, carbonyl_carbon, oxygen_idx)
                 distance = len(path) - 1
-                print(f"Hydroxyl {i+1} at atom {oxygen_idx}: distance = {distance}")
                 
                 # Proceed if distance matches target ring size
                 if distance == target_ring_size:
-                    print(f"Found hydroxyl at correct distance {target_ring_size}")
-                    
-                    # Manually creating the ester bond
+                    # Manually cyclize the molecule
                     try:
                         editable_mol = Chem.EditableMol(pks_product)
                         
@@ -171,10 +176,13 @@ def offload_pks_product(pks_product: Chem.Mol, target: Chem.Mol, pks_release_mec
                         
                         if sulfur_idx is not None:
                             # Remove the C-S bond
-                            editable_mol.RemoveBond(carbonyl_carbon, sulfur_idx)
+                            editable_mol.RemoveBond(carbonyl_carbon,
+                                                    sulfur_idx)
                             
                             # Add the C-O bond (cyclization)
-                            editable_mol.AddBond(carbonyl_carbon, oxygen_idx, Chem.rdchem.BondType.SINGLE)
+                            editable_mol.AddBond(carbonyl_carbon,
+                                                 oxygen_idx,
+                                                 Chem.rdchem.BondType.SINGLE)
                             
                             # Remove the sulfur atom
                             editable_mol.RemoveAtom(sulfur_idx)
@@ -199,9 +207,93 @@ def offload_pks_product(pks_product: Chem.Mol, target: Chem.Mol, pks_release_mec
 
     return (unbound_mol,)
 
+def matching_target_atoms(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> tuple[tuple, Chem.Mol]:
+    '''
+    Notes atom indices of the maximum common substructure between the unbound PKS product
+    and the target molecule
+
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        target_mol (Chem.Mol): The target molecule
+    
+    Returns:
+        mol2_match (tuple): Atom indices in the target molecule that match the MCS
+        mol2_copy (Chem.Mol): Copy of the target molecule with MCS highlighted
+    '''
+    mol1_copy = Chem.Mol(unbound_mol)
+    mol2_copy = Chem.Mol(target_mol)
+    mcs_no_chiral = rdFMCS.FindMCS(
+        [mol1_copy, mol2_copy], 
+        timeout=10, 
+        matchValences=True, 
+        matchChiralTag=False, 
+        bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact,
+        ringMatchesRingOnly=True)
+
+    if mcs_no_chiral.numAtoms > 0:
+        mcs_smarts = Chem.MolFromSmarts(mcs_no_chiral.smartsString)
+        mol2_match = mol2_copy.GetSubstructMatch(mcs_smarts)
+    else:
+        mol2_match = tuple()
+    return mol2_match, mol2_copy
+
+def extract_target_substructure(target_mol: Chem.Mol, selected_atoms: list) -> Chem.Mol:
+    """
+    Remove unselected atoms and bonds from a molecule while preserving the original atom indices.
+    """
+    mol_copy = Chem.Mol(target_mol)
+
+    # Store original atom indices
+    for atom in mol_copy.GetAtoms():
+        atom.SetIntProp("original_idx", atom.GetIdx())
+    
+    editable_mol = Chem.EditableMol(mol_copy)
+    selected_set = set(selected_atoms)
+    
+    # Remove bonds between selected and unselected atoms
+    bonds_to_remove = []
+    for bond in target_mol.GetBonds():
+        begin_idx = bond.GetBeginAtomIdx()
+        end_idx = bond.GetEndAtomIdx()
+        
+        # If one atom is selected and other is not
+        if (begin_idx in selected_set) != (end_idx in selected_set):
+            bonds_to_remove.append((begin_idx, end_idx))
+    
+    # Remove bonds to unselected atoms
+    for begin_idx, end_idx in bonds_to_remove:
+        try:
+            editable_mol.RemoveBond(begin_idx, end_idx)
+        except:
+            pass
+    
+    # Remove unselected atoms
+    all_atoms = set(range(target_mol.GetNumAtoms()))
+    atoms_to_remove = sorted(all_atoms - selected_set, reverse=True)
+    
+    for atom_idx in atoms_to_remove:
+        editable_mol.RemoveAtom(atom_idx)
+    
+    result_mol = editable_mol.GetMol()
+    
+    # Sanitize with implicit hydrogens
+    try:
+        Chem.SanitizeMol(result_mol, sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
+    except:
+        try:
+            Chem.SanitizeMol(result_mol, sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
+        except:
+            pass
+    
+    return result_mol
+
 def mcs_map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd.DataFrame:
     '''
     Uses maximum common substructure search to map atoms of the offloaded PKS product to the target molecule
+
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        target_mol (Chem.Mol): The target molecule
 
     Returns:
         mcs_mapped_atoms_df (pd.DataFrame): DataFrame containing atom type, product atom index, and target atom index
@@ -217,7 +309,7 @@ def mcs_map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd
                                     matchValences=True, 
                                     matchChiralTag=False, 
                                     bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact,
-                                    ringMatchesRingOnly=True)
+                                    ringMatchesRingOnly=False)
 
     if mcs_no_chiral.numAtoms > 0:
         mcs_smarts = Chem.MolFromSmarts(mcs_no_chiral.smartsString)
@@ -232,11 +324,17 @@ def mcs_map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd
                 'Product Atom Idx': prod_idx,
                 'Target Atom Idx': target_idx}, index = [i])
             mcs_mapped_atoms_df = pd.concat([mcs_mapped_atoms_df, mcs_atom_entry], ignore_index=True)
+    else:
+        print("No common substructure found between the PKS product and target molecule.")
+        return mcs_mapped_atoms_df
     return mcs_mapped_atoms_df
 
 def map_product_to_pks_modules(unbound_mol: Chem.Mol) -> pd.DataFrame:
     '''
     Stores module mapping in a dataframe by extracting atom labels for the offloaded PKS product
+
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
 
     Returns:
         atommapped_pks_df (pd.DataFrame): DataFrame containing atom type, product atom index, and module index
@@ -665,7 +763,7 @@ def kr_swaps(pks_features: dict, pattern_results: list, mmatch1: list):
             old_kr_type = pks_features['KR Type'][target_module_number]
             
             print(f"------Analyzing mismatch in module {mismatched_module}-------")
-            print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, hydroxyl={is_hydroxyl}")
+            print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl}")
             print(f"  Will modify KR type in module {target_module_number}")
             
             # Simple case: Malonyl-CoA with no DH
@@ -795,6 +893,12 @@ def check_similarity(final_corrected_prod: Chem.Mol, target_mol: Chem.Mol) -> fl
     score = similarity.get_similarity(fp_prod, fp_targ, 'jaccard')
     return score
 
+def check_smiles_match(smiles1: str, smiles2: str) -> bool:
+    if smiles1 == smiles2:
+        return True
+    else:
+        return False
+
 def main(target: str):
     '''
     Main function to perform post processing of a PKS design for a given target molecule.
@@ -815,7 +919,20 @@ def main(target: str):
 
     #Map the offloaded PKS product to the target molecule using MCS
     unbound_mol = offload_pks_product(mapped_product, target_mol, 'cyclization')[0]
-    mcs_mapped_atoms_df = mcs_map_product_to_target(unbound_mol, target_mol)
+
+    score = compareToTarget(unbound_mol, target_mol, similarity = 'mcs_without_stereo')
+
+    if score < 1.0:
+        print(f"Initial PKS product only matches the 2D target with {score*100:.3f}% MCS similarity")
+        print("Extracting common substructure from target to assess chiral centers from")
+
+        mol2_match, mol2_copy = matching_target_atoms(unbound_mol, target_mol)
+        mol2_submol = extract_target_substructure(mol2_copy, list(mol2_match))
+
+        mcs_mapped_atoms_df = mcs_map_product_to_target(unbound_mol, mol2_submol)
+        target_mol = mol2_submol
+    else:
+        mcs_mapped_atoms_df = mcs_map_product_to_target(unbound_mol, target_mol)
 
     module_mapped_atoms_df = map_product_to_pks_modules(unbound_mol)
     full_mapping_df = get_full_mapping(mcs_mapped_atoms_df, module_mapped_atoms_df)
@@ -841,10 +958,7 @@ def main(target: str):
     pairs_with_mismatches = report_pairs_with_chiral_mismatches(sequential_pairs, mmatch1)
     pattern_results = check_substituent_patterns(unbound_mol, pairs_with_mismatches)
 
-    kr_timer_start = time.perf_counter()
     pks_features_updated = kr_swaps(pks_features, pattern_results, mmatch1)
-    kr_timer_end = time.perf_counter()
-    print(f"KR swap processing time: {kr_timer_end - kr_timer_start:.4f} s")
 
     final_modules = new_design(pks_features_updated)[1]
 
@@ -852,7 +966,11 @@ def main(target: str):
     final_corrected_prod = offload_pks_product(mapped_final_prod, target_mol, 'cyclization')[0]
 
     f_match1, f_match2, f_mmatch1, f_mmatch2, f_chiral_centers_1, f_chiral_centers_2 = check_chiral_centers(final_corrected_prod, target_mol, full_mapping_df)
-    
+
+    swaps_score = len(f_match1) / (len(f_match1) + len(f_mmatch1)) if (len(f_match1) + len(f_mmatch1)) > 0 else "N/A"
+    print(f"Swaps Score: {swaps_score:.4f}")
+
+
     f_img = plotMolComparison_with_mcs_mapping(final_corrected_prod, target_mol,
                                    f_match1, f_match2, f_mmatch1, f_mmatch2,
                                    flip_mol1 = True, flip_direction = "vertical",
@@ -862,17 +980,15 @@ def main(target: str):
     with open('mcs_mapping_image_post.svg', 'w') as f:
         f.write(f_img)
 
-    sim_timer_start = time.perf_counter()
-    sim_score = check_similarity(final_corrected_prod, target_mol)
-    sim_timer_end = time.perf_counter()
+    sim_score = check_similarity(final_corrected_prod, target_mol) #Perhaps use whole target not just the matching substructure
+    
     print(f"Jaccard Similarity: {sim_score:.4f}")
-    print(f"Similarity processing time: {sim_timer_end - sim_timer_start:.4f} s")
+
+    ground_truth = check_smiles_match(Chem.MolToSmiles(final_corrected_prod), Chem.MolToSmiles(target_mol))
+    print(f"Do the corrected PKS product and target molecule/substructure match? {ground_truth}")
 
     return pks_design
 
 if __name__ == "__main__":
-    target = 'CC[C@@H]1[C@@H]([C@@H]([C@H](C(=O)[C@@H](C[C@@H]([C@@H]([C@H]([C@@H]([C@H](C(=O)O1)C)O)C)O)C)C)C)O)C'
-    overall_timer_start = time.perf_counter()
+    target = 'C[C@H]1C[C@H](C[C@@H]([C@H](/C(=C\C=C\C[C@H](OC(=O)C[C@@H]([C@H](C1)C)O)[C@@H]2CCC[C@H]2C(=O)O)/C#N)O)C)C'
     main(target)
-    overall_timer_end = time.perf_counter()
-    print(f"Overall processing time: {overall_timer_end - overall_timer_start:.4f} s")
