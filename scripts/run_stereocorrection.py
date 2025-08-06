@@ -1,5 +1,6 @@
 """
-@author: Kenna Roberts
+Uses processproduct and krswaps modules from stereopostprocessing
+to perform post processing stereo correction on RetroTide proposed PKS design.
 """
 # pylint: disable=no-member
 import os
