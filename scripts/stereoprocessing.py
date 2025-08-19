@@ -2,9 +2,8 @@ import bcs
 from typing import Optional, List
 from collections import OrderedDict
 from rdkit import Chem
-from rdkit.Chem import Draw, AllChem, rdFMCS, rdmolops
+from rdkit.Chem import Draw, AllChem, rdFMCS
 import pandas as pd
-import time
 from stereopostprocessing import fingerprints, similarity
 
 def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
@@ -585,7 +584,7 @@ def get_module_order(module_name: str) -> int:
     elif module_name.startswith('M'):
         return int(module_name[1:])
     else:
-        return float('inf')  # Unknown modules go to end
+        return float('inf')
 
 def filter_sequential_module_pairs(adjacent_pairs: list) -> list:
     '''

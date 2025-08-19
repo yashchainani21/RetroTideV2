@@ -4,8 +4,9 @@ from collections import OrderedDict
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem
 from itertools import product
-from similarity_scores import fingerprints, similarity
+from stereopostprocessing import fingerprints, similarity
 import matplotlib.pyplot as plt
+import time
 
 def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
                                   extender_codes: Optional[List[str]] = None):
@@ -242,15 +243,15 @@ def plot_top_scores(kr_combos: list, scores: list, top_n: int):
     plt.xticks(range(len(top_combos)), top_combos, rotation=45, ha='right', fontsize=8)
     
     for idx, score in enumerate(top_scores):
-        plt.text(idx, score + 0.01, f"{score:.4f}", ha='center', fontsize=8)
+        plt.text(idx, score + 0.01, f"{score:.8f}", ha='center', fontsize=8)
     
     plt.tight_layout()
     plt.show()
 
 #OPTIONAL:
 #TODO: Specify the starter and extender units to use in RetroTide.
-modify_bcs_starters_extenders(starter_codes = ['prop'],
-                              extender_codes = ['Methylmalonyl-CoA'])
+modify_bcs_starters_extenders(starter_codes = ['trans-1,2-CPDA'],
+                              extender_codes = ['Malonyl-CoA', 'Methylmalonyl-CoA'])
 from retrotide import structureDB, designPKS
 
 def main(molecule_str: str, offloading_mechanism: str) -> str:
@@ -277,16 +278,45 @@ def main(molecule_str: str, offloading_mechanism: str) -> str:
     pks_features = get_bcs_info(initial_pks_design[0])
 
     #Perform KR swaps
+    start = time.perf_counter()
     new_pks_design = kr_swaps(pks_features, initial_pks_design[0])
+    end = time.perf_counter()
+    print(f"Time taken for KR swaps: {end - start:.5f} seconds")
 
     #Offload the PKS products via thiolysis or cyclization
     released_products = release_pks_products(new_pks_design[0], offloading_mechanism)
 
     #Compute Jaccard similarity using MAPC fingerprints
+    start_2 = time.perf_counter()
     similarity_scores = get_similarity_score(target, released_products)
+    end_2 = time.perf_counter()
+    print(f"Time taken for similarity calculation: {end_2 - start_2:.5f} seconds")
 
     #Visualize the top N KR combinations by similarity score
     plot_top_scores(new_pks_design[1], similarity_scores, top_n=10)
+
+        # Create list of (score, KR_combo, SMILES) and sort by score
+    results = list(zip(similarity_scores, new_pks_design[1], released_products))
+    results.sort(key=lambda x: x[0], reverse=True)
+    
+    # Get top 5 results
+    top_5_results = [(combo, smiles, score) for score, combo, smiles in results[:5]]
+    
+    print("\nTop 5 KR combinations:")
+    for i, (combo, smiles, score) in enumerate(top_5_results, 1):
+        print(f"{i}. KR combo: {combo}")
+        print(f"   Score: {score:.6f}")
+        print(f"   SMILES: {smiles}")
+        print()
+
+        # Calculate difference between KR combo 3 and 4 scores
+    if len(top_5_results) >= 4:
+        score_3 = top_5_results[2][2]  # Index 2 for 3rd result, index 2 for score
+        score_4 = top_5_results[3][2]  # Index 3 for 4th result, index 2 for score
+        score_difference = (score_3 - score_4) * 1000000
+        print(f"Score difference between KR combo 3 and 4: {score_difference:.2f} (×10⁶)")
+    else:
+        print("Not enough results to compare KR combo 3 and 4")
 
     #Output the KR combination leading to the PKS that best matches the R/S
     #stereochemistry of the target molecule
@@ -298,7 +328,10 @@ def main(molecule_str: str, offloading_mechanism: str) -> str:
     return best_kr_combo
 
 #TODO: Provide the SMILES string of the target molecule
-molecule_str = 'CC[C@@H]1[C@@H]([C@@H]([C@H](C(=O)[C@@H](C[C@@H]([C@@H]([C@H]([C@@H]([C@H](C(=O)O1)C)O)C)O)C)C)C)O)C'
+molecule_str = 'C[C@H]1C[C@H](C[C@@H]([C@H](C(=CC=CC[C@H](OC(=O)C[C@@H]([C@H](C1)C)O)[C@@H]2CCC[C@H]2C(=O)O)C#N)O)C)C'
 
 if __name__ == "__main__":
+    overall_timer_start = time.perf_counter()
     new_design = main(molecule_str, 'cyclization')
+    overall_timer_end = time.perf_counter()
+    print(f"Overall processing time: {overall_timer_end - overall_timer_start:.4f} s")
