@@ -377,3 +377,25 @@ def new_design(pks_features:dict) -> Chem.Mol:
     cluster_f = bcs.Cluster(modules=modules)
     pks_product = cluster_f.computeProduct(structureDB)
     return pks_product, modules
+
+def apply_kr_swaps(unbound_product, full_mapping_df, mmatch1, pks_features):
+    """
+    Parse pairs of backbone carbons mapped to sequential modules and
+    apply KR swaps
+    """
+    pairs = find_adjacent_backbone_carbon_pairs(unbound_product, full_mapping_df)
+    sequential_pairs = filter_sequential_module_pairs(pairs)
+    pairs_with_mismatches = report_pairs_with_chiral_mismatches(sequential_pairs, mmatch1)
+    pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
+    pks_features_updated = kr_swaps(pks_features, pattern_results, mmatch1)
+    return pks_features_updated
+
+def check_swaps_accuracy(match, mmatch):
+    """
+    Assess stereochemistry correspondence post implementing KR Swaps
+    """
+    if (len(match) + len(mmatch)) > 0:
+        swaps_score = len(match)/(len(match)+len(mmatch))
+    else:
+        swaps_score = "N/A"
+    return swaps_score

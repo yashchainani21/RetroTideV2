@@ -1,9 +1,10 @@
 """Module for processing PKS products before stereo correction."""
 # pylint: disable=no-member
+from collections import namedtuple
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdFMCS
 import pandas as pd
-from retrotide import structureDB, designPKS
+from retrotide import structureDB, designPKS, compareToTarget
 import bcs
 from stereopostprocessing import atommappks
 
@@ -58,10 +59,12 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
     if not ring_info.AtomRings():
         return 0
     largest_ring = max(ring_info.AtomRings(), key=len)
-    target_ring_size = len(largest_ring) - 1
-    return target_ring_size
+    target_size = len(largest_ring) - 1
+    return target_size
 
-def offload_pks_product(pks_product: Chem.Mol, target_mol: Chem.Mol, pks_release_mechanism: str) -> tuple:
+def offload_pks_product(pks_product: Chem.Mol,
+                        target_mol: Chem.Mol,
+                        pks_release_mechanism: str) -> tuple:
     """
     Offloads the PKS product using the specified release mechanism.
 
@@ -198,10 +201,11 @@ def extract_target_substructure(target_mol: Chem.Mol, selected_atoms: list) -> C
     result_mol = editable_mol.GetMol()
     try:
         Chem.SanitizeMol(result_mol, sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
-    except:
+    except Exception:
         try:
-            Chem.SanitizeMol(result_mol, sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
-        except:
+            Chem.SanitizeMol(result_mol,
+                             sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
+        except Exception:
             pass
     return result_mol
 
@@ -235,7 +239,8 @@ def map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd.Dat
                 'Atom Type': atom_symbol,
                 'Product Atom Idx': prod_idx,
                 'Target Atom Idx': target_idx}, index = [i])
-            mcs_mapped_atoms_df = pd.concat([mcs_mapped_atoms_df, mcs_atom_entry], ignore_index=True)
+            mcs_mapped_atoms_df = pd.concat([mcs_mapped_atoms_df, mcs_atom_entry],
+                                            ignore_index=True)
     else:
         print("No common substructure found between the PKS product and target molecule.")
         return mcs_mapped_atoms_df
@@ -272,17 +277,17 @@ def full_mapping(mcs_map: pd.DataFrame, module_map: pd.DataFrame) -> pd.DataFram
         mcs_map, module_map, on=['Atom Type', 'Product Atom Idx']).dropna()
     return fully_mapped_molecule_df
 
-def check_chiral_centers(pks_product: Chem.Mol, target_mol: Chem.Mol, mapped_atoms: pd.DataFrame) -> tuple[list, list, list, list, dict, dict]:
+ChiralCheckResult = namedtuple('ChiralCheckResult',
+                               ['match1', 'match2', 'mmatch1', 'mmatch2', 'cc1', 'cc2'])
+def check_chiral_centers(pks_product: Chem.Mol,
+                         target_mol: Chem.Mol,
+                         mapped_atoms: pd.DataFrame) -> ChiralCheckResult:
     """
     Checks chirality of mapped atoms between the PKS product and target molecule
 
     Returns:
-        matching_atoms_1 (list): List of atom indices in PKS product with matching chirality
-        matching_atoms_2 (list): List of atom indices in target molecule with matching chirality
-        mismatching_atoms_1 (list): List of atom indices in PKS product with mismatching chirality
-        mismatching_atoms_2 (list): List of atom indices in target molecule with mismatching chirality
-        chiral_centers_1 (dict): Dictionary of chiral centers in PKS product with their chirality
-        chiral_centers_2 (dict): Dictionary of chiral centers in target molecule with their chirality
+        ChiralCheckResult: A named tuple containing lists of matching and mismatching atom indices
+        and dicts of chiral centers
     """
     chiral_centers_1 = dict(Chem.FindMolChiralCenters(pks_product, includeUnassigned=True))
     chiral_centers_2 = dict(Chem.FindMolChiralCenters(target_mol, includeUnassigned=True))
@@ -306,4 +311,50 @@ def check_chiral_centers(pks_product: Chem.Mol, target_mol: Chem.Mol, mapped_ato
                 else:
                     mismatching_atoms_1.append(atom1_idx)
                     mismatching_atoms_2.append(atom2_idx)
-    return matching_atoms_1, matching_atoms_2, mismatching_atoms_1, mismatching_atoms_2, chiral_centers_1, chiral_centers_2
+    return ChiralCheckResult(matching_atoms_1, matching_atoms_2,
+                             mismatching_atoms_1, mismatching_atoms_2,
+                             chiral_centers_1, chiral_centers_2)
+
+def initialize_pks_product(target):
+    """
+    Run RetroTide on the target molecule, module map its product and offload
+    the product from the PKS
+    """
+    target_mol = Chem.MolFromSmiles(target)
+    pks_design = initial_pks(target)[0]
+    mapped_product = module_mapping(pks_design)
+    unbound_product = offload_pks_product(mapped_product, target_mol, 'cyclization')[0]
+    return target_mol, pks_design, unbound_product
+
+def add_atom_labels(mol: Chem.Mol, chiral_centers: dict) -> Chem.Mol:
+    """
+    Add atom labels to the molecule for visualization
+    """
+    for atom in mol.GetAtoms():
+        atom_idx = atom.GetIdx()
+        base_label = f"{atom.GetSymbol()}:{atom_idx}"
+        # Add R/S label if it's a chiral center
+        if atom_idx in chiral_centers:
+            chirality = chiral_centers[atom_idx]
+            label = f"{base_label} ({chirality})"
+        else:
+            label = base_label
+        atom.SetProp("atomNote", label)
+    return mol
+
+def check_mcs(unbound_product, target_mol):
+    """
+    Assess 2D similarity using MCS. If < 1.0, extract common substructure and set as the target
+    """
+    mcs_score = compareToTarget(unbound_product, target_mol, similarity='mcs_without_stereo')
+    if mcs_score < 1.0:
+        print(f"Initial PKS product only matches {mcs_score*100:.1f}% of the 2D target")
+        print("Extracting common substructure from target to assess chiral centers from")
+        mol2_match, mol2_copy = matching_target_atoms(unbound_product, target_mol)
+        mol2_submol = extract_target_substructure(mol2_copy, list(mol2_match))
+
+        mcs_mapped_atoms_df = map_product_to_target(unbound_product, mol2_submol)
+        return mol2_submol, mcs_mapped_atoms_df
+    else:
+        mcs_mapped_atoms_df = map_product_to_target(unbound_product, target_mol)
+        return target_mol, mcs_mapped_atoms_df

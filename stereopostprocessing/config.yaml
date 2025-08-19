@@ -1,0 +1,6 @@
+job_name: Borrelidin
+molecule: C[C@H]1C[C@H](C[C@@H]([C@H](/C(=C\C=C\C[C@H](OC(=O)C[C@@H]([C@H](C1)C)O)[C@@H]2CCC[C@H]2C(=O)O)/C#N)O)C)C
+output_dir: RetroTideV2/stereopostprocessing/results
+starter_codes: trans-1,2-CPDA 
+extender_codes: Malonyl-CoA, Methylmalonyl-CoA
+stereo: R/S
