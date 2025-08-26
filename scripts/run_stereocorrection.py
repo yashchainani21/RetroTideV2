@@ -17,6 +17,8 @@ def load_config(config_path="config.yaml"):
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+config = load_config("RetroTideV2/stereopostprocessing/config.yaml")
+
 def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
                                   extender_codes: Optional[List[str]] = None):
     """
@@ -30,7 +32,6 @@ def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
         if key not in extender_codes:
             bcs.extenders.pop(key, None)
 
-config = load_config("RetroTideV2/stereopostprocessing/config.yaml")
 modify_bcs_starters_extenders(starter_codes = config["starter_codes"],
                               extender_codes = config["extender_codes"])
 
@@ -58,7 +59,7 @@ def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, ful
     """
     final_design = krswaps.new_design(pks_features_updated)[1]
     mapped_final_prod = pp.module_mapping(final_design)
-    final_prod = pp.offload_pks_product(mapped_final_prod, target_mol, 'cyclization')[0]
+    final_prod = pp.offload_pks_product(mapped_final_prod, target_mol, config["offload_mech"])[0]
     chiral_result_f = pp.check_chiral_centers(final_prod, target_mol, full_mapping_df)
     return chiral_result_f, final_prod, final_design
 
@@ -102,7 +103,7 @@ def main(molecule: str):
     Perform post processing stereo correction on RetroTide proposed PKS design
     """
     target_mol, pks_design, unbound_product = pp.initialize_pks_product(
-        pp.canonicalize_smiles(molecule, config["stereo"]))
+        pp.canonicalize_smiles(molecule, config["stereo"]), config["offload_mech"])
     chiral_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
 
     pks_features = krswaps.get_bcs_info(pks_design)
@@ -114,9 +115,9 @@ def main(molecule: str):
                                                                target_mol,
                                                                full_mapping_df)
     
-    if krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1) < 1.0:
+    swaps_score = krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1)
+    if swaps_score is not None and swaps_score < 1.0:
         print("Remaining mismatches cannot be corrected by changing the KR type")
-
     if Chem.MolToSmiles(final_prod) == Chem.MolToSmiles(target_mol):
         print("The final product and matching target substructure smiles match!")
     else:
