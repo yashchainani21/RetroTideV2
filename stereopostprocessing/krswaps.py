@@ -227,7 +227,7 @@ def check_substituent_patterns(mol: Chem.Mol, mismatch_pairs: list) -> list:
         results.append(pair_info)
     return results
 
-def identify_module_to_edit(mismatched_module: str, is_hydroxyl: bool):
+def identify_module_to_edit(mismatched_module: str, is_hydroxyl: bool, is_ester: bool) -> int:
     """
     Identify which module to perform a KR swap on
     """
@@ -235,7 +235,7 @@ def identify_module_to_edit(mismatched_module: str, is_hydroxyl: bool):
         target_module =  1
     if mismatched_module.startswith('M'):
         target_module = int(mismatched_module[1:])
-        if is_hydroxyl:
+        if is_hydroxyl or is_ester:
             target_module += 1
     return target_module
 
@@ -324,10 +324,10 @@ def process_atom_info(atom_info: dict, pks_features: dict):
     is_alpha = 'alpha_substituted' in mismatched_patterns
     is_hydroxyl = 'hydroxyl_substituted' in mismatched_patterns
     is_ester = 'ester_substituted' in mismatched_patterns
-    target_module_number = identify_module_to_edit(mismatched_module, is_hydroxyl)
+    target_module_number = identify_module_to_edit(mismatched_module, is_hydroxyl, is_ester)
     old_kr_type = pks_features['KR Type'][target_module_number]
     print(f"------Analyzing mismatch from {mismatched_module}-------")
-    print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl}")
+    print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl or is_ester}")
     print(f"  Will modify KR type in module {target_module_number}")
     new_kr_type = determine_best_kr_type(pks_features, target_module_number,
                                          old_kr_type,
@@ -397,5 +397,5 @@ def check_swaps_accuracy(match, mmatch):
     if (len(match) + len(mmatch)) > 0:
         swaps_score = len(match)/(len(match)+len(mmatch))
     else:
-        swaps_score = "N/A"
+        swaps_score = None
     return swaps_score

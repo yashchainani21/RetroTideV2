@@ -77,14 +77,23 @@ def offload_pks_product(pks_product: Chem.Mol,
     Returns:
         unbound_mol (tuple): The unbound PKS product
     """
+    thioester_pattern = '[C:1](=[O:2])[S:3]'
+    thioester_matches = pks_product.GetSubstructMatches(Chem.MolFromSmarts(thioester_pattern))
+    
     if pks_release_mechanism == 'thiolysis':
         Chem.SanitizeMol(pks_product)  
-        rxn = AllChem.ReactionFromSmarts('[C:1](=[O:2])[S:3]>>[C:1](=[O:2])[O].[S:3]')
-        products = rxn.RunReactants((pks_product,))
-        if not products:
+        
+        c_idx, o_idx, s_idx = thioester_matches[0]
+        if not thioester_matches:
             print("Warning: No products generated from thiolysis reaction.")
             return (pks_product,)
-        unbound_mol = products[0][0]
+        
+        editable_mol = Chem.EditableMol(pks_product)
+        editable_mol.RemoveBond(c_idx, s_idx)
+        editable_mol.RemoveAtom(s_idx)
+        new_o_idx = editable_mol.AddAtom(Chem.Atom("O"))
+        editable_mol.AddBond(c_idx, new_o_idx, Chem.rdchem.BondType.SINGLE)
+        unbound_mol = editable_mol.GetMol()
         Chem.SanitizeMol(unbound_mol)
         return (unbound_mol,)
 
@@ -92,9 +101,6 @@ def offload_pks_product(pks_product: Chem.Mol,
         Chem.SanitizeMol(pks_product)
         target_size = target_ring_size(target_mol)
         
-        thioester_pattern = '[C:1](=[O:2])[S:3]'
-        thioester_matches = pks_product.GetSubstructMatches(
-            Chem.MolFromSmarts(thioester_pattern))
         if not thioester_matches:
             print("Warning: No thioester found in PKS product")
             return (pks_product,)
@@ -315,7 +321,7 @@ def check_chiral_centers(pks_product: Chem.Mol,
                              mismatching_atoms_1, mismatching_atoms_2,
                              chiral_centers_1, chiral_centers_2)
 
-def initialize_pks_product(target):
+def initialize_pks_product(target, offload_mech):
     """
     Run RetroTide on the target molecule, module map its product and offload
     the product from the PKS
@@ -323,7 +329,7 @@ def initialize_pks_product(target):
     target_mol = Chem.MolFromSmiles(target)
     pks_design = initial_pks(target)[0]
     mapped_product = module_mapping(pks_design)
-    unbound_product = offload_pks_product(mapped_product, target_mol, 'cyclization')[0]
+    unbound_product = offload_pks_product(mapped_product, target_mol, offload_mech)[0]
     return target_mol, pks_design, unbound_product
 
 def add_atom_labels(mol: Chem.Mol, chiral_centers: dict) -> Chem.Mol:

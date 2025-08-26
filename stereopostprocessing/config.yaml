@@ -1,6 +1,7 @@
-job_name: Borrelidin
-molecule: C[C@H]1C[C@H](C[C@@H]([C@H](/C(=C\C=C\C[C@H](OC(=O)C[C@@H]([C@H](C1)C)O)[C@@H]2CCC[C@H]2C(=O)O)/C#N)O)C)C
+job_name: Seco_Rapamycin
+molecule: C[C@@H]1CC[C@H](O[C@]1(C(=O)C(=O)N2CCCC[C@H]2C(=O)O)O)C[C@@H](/C(=C/C=C/C=C/[C@@H](C)C[C@@H](C)C(=O)[C@@H]([C@@H](/C(=C/[C@@H](C)C(=O)/C=C/[C@H](C)C[C@@H]3CC[C@H]([C@@H](C3)OC)O)/C)O)OC)/C)OC
 output_dir: RetroTideV2/stereopostprocessing/results
-starter_codes: trans-1,2-CPDA 
+starter_codes: DHCH
 extender_codes: Malonyl-CoA, Methylmalonyl-CoA
 stereo: R/S
+offload_mech: thiolysis
