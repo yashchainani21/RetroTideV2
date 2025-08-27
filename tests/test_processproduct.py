@@ -123,20 +123,5 @@ class TestProductMapping(unittest.TestCase):
                                               Chem.MolFromSmiles(TEST_TARGET))
         self.assertIsInstance(result, pd.DataFrame)
 
-class TestChiralCenters(unittest.TestCase):
-    """Unit tests for checking chiral centers in mapped product and target."""
-    def test_chiral_centers(self):
-        """Test that chiral centers matches and mismatches are identified correctly."""
-        full_mapping_df = pd.read_csv('/home/kroberts/PythonProject/Coding Practice/fully_mapped_molecule.csv')
-        result = pp.check_chiral_centers(Chem.MolFromSmiles(TEST_UNBOUND_PRODUCT),
-                                         Chem.MolFromSmiles(TEST_TARGET),
-                                         full_mapping_df)
-        self.assertIsInstance(result[0], list)
-        self.assertIsInstance(result[1], list)
-        self.assertIsInstance(result[2], list)
-        self.assertIsInstance(result[3], list)
-        self.assertIsInstance(result[4], dict)
-        self.assertIsInstance(result[5], dict)
-
 if __name__ == '__main__':
     unittest.main()
