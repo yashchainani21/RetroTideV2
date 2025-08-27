@@ -35,13 +35,6 @@ class TestIdentifyPairs(unittest.TestCase):
         self.unbound_product = Chem.MolFromSmiles(
             'CC1=CC=CC[C@@H]([C@@H]2CCC[C@H]2C(=O)O)OC(=O)C[C@H](O)[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)[C@H]1O')
 
-    def test_adjacent_carbons(self):
-        """Test that adjacent backbone carbon pairs are identified correctly."""
-        full_mapping_df = pd.read_csv(
-            '/home/kroberts/PythonProject/Coding Practice/fully_mapped_molecule.csv')
-        result = ks.find_adjacent_backbone_carbon_pairs(self.unbound_product, full_mapping_df)
-        self.assertIsInstance(result, list)
-
     def test_sequential_pairs(self):
         """Test that sequential module pairs are filtered correctly."""
         result = ks.filter_sequential_module_pairs(test_pairs)
