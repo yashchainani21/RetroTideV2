@@ -108,20 +108,17 @@ def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene
     all_1 = chiral_result.match1 + chiral_result.mmatch1 + alkene_result.match1 + alkene_result.mmatch1
     all_2 = chiral_result.match2 + chiral_result.mmatch2 + alkene_result.match2 + alkene_result.mmatch2
 
-    # --- Highlight double bonds ---
-    def get_double_bond_indices(mol, atom_indices):
-        bond_indices = []
-        for bond in mol.GetBonds():
-            if bond.GetBondType() == Chem.BondType.DOUBLE:
-                a1 = bond.GetBeginAtomIdx()
-                a2 = bond.GetEndAtomIdx()
-                if a1 in atom_indices and a2 in atom_indices:
-                    bond_indices.append(bond.GetIdx())
-        return bond_indices
+    # All highlighted double bonds
+    all_bonds_1 = set(alkene_result.match1 + alkene_result.mmatch1)
+    all_bonds_2 = set(alkene_result.match2 + alkene_result.mmatch2)
 
-    # Use alkene_result.match1 + mmatch1 for product, match2 + mmatch2 for target
-    bond_indices_1 = get_double_bond_indices(mol1, alkene_result.match1 + alkene_result.mmatch1)
-    bond_indices_2 = get_double_bond_indices(mol2, alkene_result.match2 + alkene_result.mmatch2)
+    bond_indices_1 = [bond.GetIdx() for bond in mol1.GetBonds()
+                      if bond.GetBeginAtomIdx() in all_bonds_1
+                      and bond.GetEndAtomIdx() in all_bonds_1]
+    bond_indices_2 = [bond.GetIdx() for bond in mol2.GetBonds()
+                      if bond.GetBeginAtomIdx() in all_bonds_2
+                      and bond.GetEndAtomIdx() in all_bonds_2]
+
     return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
                                 molsPerRow=2, highlightAtomLists=[all_1, all_2],
                                 highlightAtomColors=[highlight_1, highlight_2],
