@@ -181,7 +181,6 @@ class Cluster:
                 # (instead of always using the second-to-last module of the full cluster)
                 if idx > 0:
                     prev_mod = modulesToExecute[idx-1]
-                    print(module, prev_mod)
                 else:
                     # No previous module within modulesToExecute; skip context-dependent logic
                     prev_mod = None
