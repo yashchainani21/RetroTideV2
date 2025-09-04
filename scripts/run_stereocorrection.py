@@ -46,13 +46,14 @@ def preprocessing(unbound_product: Chem.Mol, target_mol: Chem.Mol):
     chiral center
     """
     target_mol, mcs_mapped_atoms_df = pp.check_mcs(unbound_product, target_mol)
-    full_mapping_df = dhswaps.ez_atom_labels(target_mol,
+    full_mapping_df = dhswaps.ez_atom_labels(unbound_product, target_mol,
                                              pp.full_mapping(mcs_mapped_atoms_df,
                                                              pp.map_product_to_pks_modules(unbound_product)))
     chiral_result = pp.check_chiral_centers(unbound_product,
                                             target_mol,
                                             full_mapping_df)
-    return chiral_result, full_mapping_df, target_mol
+    alkene_result = dhswaps.check_alkene_stereo(full_mapping_df)
+    return chiral_result, alkene_result, full_mapping_df, target_mol
 
 def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, full_mapping_df):
     """
@@ -61,8 +62,10 @@ def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, ful
     final_design = krswaps.new_design(pks_features_updated)[1]
     mapped_final_prod = pp.module_mapping(final_design)
     final_prod = pp.offload_pks_product(mapped_final_prod, target_mol, config["offload_mech"])[0]
+    full_mapping_df_f = dhswaps.ez_atom_labels(final_prod, target_mol, full_mapping_df)
     chiral_result_f = pp.check_chiral_centers(final_prod, target_mol, full_mapping_df)
-    return chiral_result_f, final_prod, final_design
+    alkene_result_f = dhswaps.check_alkene_stereo(full_mapping_df_f)
+    return chiral_result_f, alkene_result_f, final_prod, final_design
 
 def compute_similarity(final_prod, target_mol):
     """
@@ -73,7 +76,7 @@ def compute_similarity(final_prod, target_mol):
     jaccard_score = sm.get_similarity(fp_prod, fp_target, 'jaccard')
     return jaccard_score
 
-def plot_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result):
+def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene_result):
     """
     Visualize results
     """
@@ -89,13 +92,40 @@ def plot_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result):
         highlight_1[atom_idx] = (1, 0, 0)
     for atom_idx in chiral_result.mmatch2:
         highlight_2[atom_idx] = (1, 0, 0)
+
+    # Green for matching alkene stereochemistry
+    for atom_idx in alkene_result.match1:
+        highlight_1[atom_idx] = (0, 1, 0)
+    for atom_idx in alkene_result.match2:
+        highlight_2[atom_idx] = (0, 1, 0)
+    # Red for mismatching alkene stereochemistry
+    for atom_idx in alkene_result.mmatch1:
+        highlight_1[atom_idx] = (1, 0, 0)
+    for atom_idx in alkene_result.mmatch2:
+        highlight_2[atom_idx] = (1, 0, 0)
+
     # All highlighted atoms
-    all_1 = chiral_result.match1 + chiral_result.mmatch1
-    all_2 = chiral_result.match2 + chiral_result.mmatch2
+    all_1 = chiral_result.match1 + chiral_result.mmatch1 + alkene_result.match1 + alkene_result.mmatch1
+    all_2 = chiral_result.match2 + chiral_result.mmatch2 + alkene_result.match2 + alkene_result.mmatch2
+
+    # --- Highlight double bonds ---
+    def get_double_bond_indices(mol, atom_indices):
+        bond_indices = []
+        for bond in mol.GetBonds():
+            if bond.GetBondType() == Chem.BondType.DOUBLE:
+                a1 = bond.GetBeginAtomIdx()
+                a2 = bond.GetEndAtomIdx()
+                if a1 in atom_indices and a2 in atom_indices:
+                    bond_indices.append(bond.GetIdx())
+        return bond_indices
+
+    # Use alkene_result.match1 + mmatch1 for product, match2 + mmatch2 for target
+    bond_indices_1 = get_double_bond_indices(mol1, alkene_result.match1 + alkene_result.mmatch1)
+    bond_indices_2 = get_double_bond_indices(mol2, alkene_result.match2 + alkene_result.mmatch2)
     return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
                                 molsPerRow=2, highlightAtomLists=[all_1, all_2],
                                 highlightAtomColors=[highlight_1, highlight_2],
-                                highlightBondLists=[[], []], 
+                                highlightBondLists=[bond_indices_1, bond_indices_2], 
                                 useSVG=True, 
                                 subImgSize=(500, 400))
 
@@ -105,7 +135,7 @@ def main(molecule: str):
     """
     target_mol, pks_design, unbound_product = pp.initialize_pks_product(
         pp.canonicalize_smiles(molecule, config["stereo"]), config["offload_mech"])
-    chiral_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
+    chiral_result, alkene_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
 
     pks_features = krswaps.get_bcs_info(pks_design)
     print("Correcting R/S Stereochemistry)")
@@ -114,7 +144,7 @@ def main(molecule: str):
     print("Correcting E/Z Stereochemistry")
     pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_updated, full_mapping_df, target_mol)
 
-    chiral_result_f, final_prod, final_design = postprocessing(pks_features_dh_swapped,
+    chiral_result_f, alkene_result_f, final_prod, final_design = postprocessing(pks_features_dh_swapped,
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
@@ -133,8 +163,8 @@ def main(molecule: str):
     mol1_f = pp.add_atom_labels(final_prod, chiral_result_f.cc1)
     mol2_f = pp.add_atom_labels(target_mol, chiral_result_f.cc2)
     return {
-        "img_before": plot_comparison(mol1, mol2, chiral_result),
-        "img_after": plot_comparison(mol1_f, mol2_f, chiral_result_f),
+        "img_before": plot_stereo_comparison(mol1, mol2, chiral_result, alkene_result),
+        "img_after": plot_stereo_comparison(mol1_f, mol2_f, chiral_result_f, alkene_result_f),
         "final_design": final_design,
         "jaccard": compute_similarity(final_prod, target_mol)
     }
