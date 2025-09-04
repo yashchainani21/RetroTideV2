@@ -1,3 +1,4 @@
+from collections import namedtuple
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdFMCS, Draw
 import pandas as pd
@@ -24,33 +25,35 @@ def extract_ez_atoms(mol):
                 e_bonds.append((begin_idx, end_idx))
     return z_bonds, e_bonds
 
-def track_doublebond_info(target_mol: Chem.Mol):
+def track_doublebond_info(mol: Chem.Mol):
     """
     """
-    targ_z, targ_e = extract_ez_atoms(target_mol)
+    targ_z, targ_e = extract_ez_atoms(mol)
     z_set = set(idx for pair in targ_z for idx in pair)
     e_set = set(idx for pair in targ_e for idx in pair)
     return z_set, e_set
 
-def ez_atom_labels(target_mol: Chem.Mol, full_mapping_df: pd.DataFrame):
+def ez_atom_labels(pks_product: Chem.Mol, target_mol: Chem.Mol, full_mapping_df: pd.DataFrame):
     """
     """
-    z_set, e_set = track_doublebond_info(target_mol)
-    def get_bond_info(idx: int, target_mol: Chem.Mol):
+    z_prod_set, e_prod_set = track_doublebond_info(pks_product)
+    z_targ_set, e_targ_set = track_doublebond_info(target_mol)
+    def get_bond_info(idx: int, mol: Chem.Mol, z_set, e_set):
         if idx in z_set:
-            atom = target_mol.GetAtomWithIdx(idx)
+            atom = mol.GetAtomWithIdx(idx)
             is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
             if is_double_bond:
                 return "Z"
         if idx in e_set:
-            atom = target_mol.GetAtomWithIdx(idx)
+            atom = mol.GetAtomWithIdx(idx)
             is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
             if is_double_bond:
                 return "E"
         else:
             return None
-    
-    full_mapping_df['EZ Label'] = full_mapping_df['Target Atom Idx'].apply(lambda idx: get_bond_info(idx, target_mol))
+
+    full_mapping_df['Product EZ Label'] = full_mapping_df['Product Atom Idx'].apply(lambda idx: get_bond_info(idx, pks_product, z_prod_set, e_prod_set))
+    full_mapping_df['Target EZ Label'] = full_mapping_df['Target Atom Idx'].apply(lambda idx: get_bond_info(idx, target_mol, z_targ_set, e_targ_set))
     return full_mapping_df
 
 def target_module_dh(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
@@ -144,3 +147,28 @@ def apply_dh_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, target_mol
     check_substrate_ez_compatibility(pks_features, z_mod_num)
     dh_swapped_pks_features = correct_ez_stereo(pks_features, z_mod_num, e_mod_num)
     return dh_swapped_pks_features
+
+AlkeneCheckResult = namedtuple('AlkeneCheckResult', ['match1', 'match2', 'mmatch1', 'mmatch2'])
+def check_alkene_stereo(mapped_atoms: pd.DataFrame) -> AlkeneCheckResult:
+    """
+    Checks stereochemistry of double bonds between the PKS product and target molecule
+
+    Returns:
+        AlkeneCheckResult: A named tuple containing lists of matching and mismatching atom indices
+        and dicts of double bonds
+    """
+    matching_atoms_1 = []
+    matching_atoms_2 = []
+    mismatching_atoms_1 = []
+    mismatching_atoms_2 = []
+    mapped_atoms['EZ Match'] = mapped_atoms['Target EZ Label'] == mapped_atoms['Product EZ Label']
+    mapped_atoms['EZ Mismatch'] = mapped_atoms['Target EZ Label'] != mapped_atoms['Product EZ Label']
+    for _, row in mapped_atoms.iterrows():
+        if row['EZ Match'] and row['Target EZ Label']:
+            matching_atoms_1.append(row['Product Atom Idx'])
+            matching_atoms_2.append(row['Target Atom Idx'])
+        if row['EZ Mismatch'] and row['Target EZ Label']:
+            mismatching_atoms_1.append(row['Product Atom Idx'])
+            mismatching_atoms_2.append(row['Target Atom Idx'])
+    return AlkeneCheckResult(matching_atoms_1, matching_atoms_2,
+                             mismatching_atoms_1, mismatching_atoms_2)
