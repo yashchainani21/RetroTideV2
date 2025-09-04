@@ -6,7 +6,7 @@ import json
 import yaml
 import bcs
 
-def extract_ez_atoms_full(mol):
+def extract_ez_atoms(mol):
     """
     Returns lists of tuples for each (Z) and (E) double bond.
     """
@@ -24,28 +24,34 @@ def extract_ez_atoms_full(mol):
                 e_bonds.append((begin_idx, end_idx))
     return z_bonds, e_bonds
 
-def label_ez(idx, target_mol, z_bonds, e_bonds):
-    z_set = set(idx for pair in z_bonds for idx in pair)
-    e_set = set(idx for pair in e_bonds for idx in pair)
-    if idx in z_set:
-        atom = target_mol.GetAtomWithIdx(idx)
-        is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
-        if is_double_bond:
-            return "Z"
-    if idx in e_set:
-        atom = target_mol.GetAtomWithIdx(idx)
-        is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
-        if is_double_bond:
-            return "E"
-    else:
-        return None
+def track_doublebond_info(target_mol: Chem.Mol):
+    """
+    """
+    targ_z, targ_e = extract_ez_atoms(target_mol)
+    z_set = set(idx for pair in targ_z for idx in pair)
+    e_set = set(idx for pair in targ_e for idx in pair)
+    return z_set, e_set
+
+def ez_atom_labels(target_mol: Chem.Mol, full_mapping_df: pd.DataFrame):
+    """
+    """
+    z_set, e_set = track_doublebond_info(target_mol)
+    def get_bond_info(idx: int, target_mol: Chem.Mol):
+        if idx in z_set:
+            atom = target_mol.GetAtomWithIdx(idx)
+            is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
+            if is_double_bond:
+                return "Z"
+        if idx in e_set:
+            atom = target_mol.GetAtomWithIdx(idx)
+            is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
+            if is_double_bond:
+                return "E"
+        else:
+            return None
     
-def update_ez_labels(full_mapping: pd.DataFrame, target_mol: Chem.Mol, z_bonds, e_bonds) -> pd.DataFrame:
-    full_mapping['EZ Label'] = full_mapping['Target Atom Idx'].apply(lambda idx: label_ez(idx,
-                                                                                          target_mol,
-                                                                                          z_bonds,
-                                                                                          e_bonds))
-    return full_mapping
+    full_mapping_df['EZ Label'] = full_mapping_df['Target Atom Idx'].apply(lambda idx: get_bond_info(idx, target_mol))
+    return full_mapping_df
 
 def target_module_dh(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
     z_targets = []
@@ -65,6 +71,15 @@ def get_target_module_dh(double_bond: tuple):
     modj = (str(double_bond[1])).lstrip('M')
     return int(modi) if modi > modj else int(modj)
 
+def get_target_dh_modules(full_mapping_df: pd.DataFrame, target_mol: Chem.Mol):
+    """
+    """
+    z_bonds, e_bonds = extract_ez_atoms(target_mol)
+    z_target_mods, e_target_mods = target_module_dh(full_mapping_df, z_bonds, e_bonds)
+    z_mod_num = [get_target_module_dh(db) for db in z_target_mods]
+    e_mod_num = [get_target_module_dh(db) for db in e_target_mods]
+    return z_mod_num, e_mod_num
+
 def z_kr_dh_combo(target_z_module: list):
     new_kr_type = 'A'
     new_dh_type = 'Z'
@@ -74,6 +89,26 @@ def e_kr_dh_combo(target_e_module: list):
     new_kr_type = 'B'
     new_dh_type = 'E'
     return new_kr_type, new_dh_type
+
+def check_substrate_ez_compatibility(pks_features: dict, z_mod_num: List[int]):
+    """
+    If the module number in pks_features equals the module number in full_mapping_df that has a Z EZ Label with a non-Malonyl substrate, then the Z bond is not possible via PKSs!!
+    """
+    error_ct = 0
+    substrate = pks_features['Substrate']
+    for mod in z_mod_num:
+        if substrate[mod] != 'Malonyl-CoA':
+            error_ct += 1
+            print(f"Module {mod} is associated with an intended Z double bond but uses a non-Malonyl-CoA substrate ({substrate[mod]}).")
+            print("------This transformation is incompatible with known PKS biosynthesis------")
+    return error_ct
+
+def check_dh_swaps_accuracy(error_ct: int):
+    """
+    # unmatching double bond EZ labels + # incompatible errors
+    """
+    #ADD EZ label mismatches
+    return error_ct
 
 def correct_ez_stereo(pks_features: dict, z_mod_num: list, e_mod_num: list) -> dict:
     for mod_z in z_mod_num:
@@ -102,3 +137,10 @@ def correct_ez_stereo(pks_features: dict, z_mod_num: list, e_mod_num: list) -> d
                     print(f"Swapped KR-DH types to types {new_kr_type}-{new_dh_type}")
     return pks_features
 
+def apply_dh_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, target_mol: Chem.Mol) -> dict:
+    """
+    """
+    z_mod_num, e_mod_num = get_target_dh_modules(full_mapping_df, target_mol)
+    check_substrate_ez_compatibility(pks_features, z_mod_num)
+    dh_swapped_pks_features = correct_ez_stereo(pks_features, z_mod_num, e_mod_num)
+    return dh_swapped_pks_features

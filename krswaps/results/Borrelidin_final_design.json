@@ -1,11 +1,11 @@
 [
   "[\"AT{'substrate': 'trans-1,2-CPDA'}\", 'loading: True']",
   "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'T'}\", 'loading: False']",
-  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'T'}\", 'loading: False']",
+  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'loading: False']",
   "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A1'}\", 'loading: False']",
-  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'T'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'T'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'T'}\", 'ER{}', 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
   "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']"
 ]

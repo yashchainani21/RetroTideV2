@@ -153,7 +153,8 @@ def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
         '[C:1][C:2](=[O:3])',
         '[C:1][C:2][OH:3]',
         '[C:1][C:2](=[O:3])[O:4][C:5]',
-        '[C:1][C:2]=[C:3]' 
+        '[C:1]/[C:2]=[C:3]/[C:4]',
+        '[C:1]/[C:2]=[C:3]\[C:4]' 
     ]
     results = {'atom1' : [], 'atom2': []}
     for smarts in alpha_carbon_patterns:
