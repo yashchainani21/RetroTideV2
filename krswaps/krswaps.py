@@ -35,6 +35,7 @@ def get_bcs_info(pks_design: list)-> dict:
         'Module Number': [],
         'Substrate': [],
         'KR Type': [],
+        'DH Type' : [],
         'DH' : [],
         'ER' : []
     }
@@ -46,15 +47,19 @@ def get_bcs_info(pks_design: list)-> dict:
             kr_type = module.domains[bcs.KR].type
             pks_features['KR Type'].append(kr_type)
             if bcs.DH in module.domains:
+                dh_type = module.domains[bcs.DH].type
+                pks_features['DH Type'].append(dh_type)
                 pks_features['DH'].append(True)
             else:
-                pks_features['DH'].append(False)        
+                pks_features['DH'].append(False)
+                pks_features['DH Type'].append(None)        
             if bcs.ER in module.domains:
                 pks_features['ER'].append(True)
             else:
                 pks_features['ER'].append(False)
         else:
             pks_features['KR Type'].append(None)
+            pks_features['DH Type'].append(None)
             pks_features['DH'].append(False)
             pks_features['ER'].append(False)
     return pks_features
@@ -281,7 +286,10 @@ def determine_best_kr_type(pks_features: dict, target_module_number: int,
             new_kr_type = 'A'
     elif (substrate == "Malonyl-CoA" and 
         pks_features['DH'][target_module_number] is True):
-        new_kr_type = 'B'
+        if old_kr_type == 'A':
+            new_kr_type = 'B'
+        else:
+            new_kr_type = 'A'
     elif (substrate != "Malonyl-CoA" and 
         pks_features['DH'][target_module_number] is True):
         new_kr_type = 'B1'
@@ -369,8 +377,9 @@ def new_design(pks_features:dict) -> Chem.Mol:
             if pks_features['KR Type'][idx] is not None:
                 domains_dict.update({bcs.KR: bcs.KR(active=True,
                                                     type=pks_features['KR Type'][idx])})
-            if pks_features['DH'][idx]:
-                domains_dict.update({bcs.DH: bcs.DH(active=True)})
+            if pks_features['DH Type'][idx] is not None:
+                domains_dict.update({bcs.DH: bcs.DH(active=True,
+                                                    type=pks_features['DH Type'][idx])})
             if pks_features['ER'][idx]:
                 domains_dict.update({bcs.ER: bcs.ER(active=True)})
             module = bcs.Module(domains=domains_dict, loading=False)
