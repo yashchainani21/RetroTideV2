@@ -1,6 +1,6 @@
 """
-Uses processproduct and krswaps modules from stereopostprocessing
-to perform post processing stereo correction on RetroTide proposed PKS design.
+Uses processproduct, krswaps, and dhswaps modules from stereopostprocessing
+to perform post processing E/Z and R/S stereo corrections on RetroTide proposed PKS design.
 """
 # pylint: disable=no-member, import-error, wrong-import-position
 from typing import Optional, List
@@ -36,7 +36,7 @@ modify_bcs_starters_extenders(starter_codes = config["starter_codes"],
                               extender_codes = config["extender_codes"])
 
 from krswaps import processproduct as pp
-from krswaps import krswaps
+from krswaps import krswaps, dhswaps
 from krswaps import fingerprints as fp
 from krswaps import similarity as sm
 
@@ -46,8 +46,9 @@ def preprocessing(unbound_product: Chem.Mol, target_mol: Chem.Mol):
     chiral center
     """
     target_mol, mcs_mapped_atoms_df = pp.check_mcs(unbound_product, target_mol)
-    full_mapping_df = pp.full_mapping(mcs_mapped_atoms_df,
-                                      pp.map_product_to_pks_modules(unbound_product))
+    full_mapping_df = dhswaps.ez_atom_labels(target_mol,
+                                             pp.full_mapping(mcs_mapped_atoms_df,
+                                                             pp.map_product_to_pks_modules(unbound_product)))
     chiral_result = pp.check_chiral_centers(unbound_product,
                                             target_mol,
                                             full_mapping_df)
@@ -107,17 +108,21 @@ def main(molecule: str):
     chiral_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
 
     pks_features = krswaps.get_bcs_info(pks_design)
+    print("Correcting R/S Stereochemistry)")
     pks_features_updated = krswaps.apply_kr_swaps(unbound_product, full_mapping_df,
                                                   chiral_result.mmatch1, pks_features)
-    
-    chiral_result_f, final_prod, final_design = postprocessing(pks_features_updated,
+    print("Correcting E/Z Stereochemistry")
+    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_updated, full_mapping_df, target_mol)
+
+    chiral_result_f, final_prod, final_design = postprocessing(pks_features_dh_swapped,
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
     
-    swaps_score = krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1)
-    if swaps_score is not None and swaps_score < 1.0:
-        print("Remaining mismatches cannot be corrected by changing the KR type")
+    rs_swaps_score = krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1)
+    #Add ez_swaps_score
+    if rs_swaps_score is not None and rs_swaps_score < 1.0:
+        print("Remaining R/S mismatches cannot be corrected by changing the KR type")
     if Chem.MolToSmiles(final_prod) == Chem.MolToSmiles(target_mol):
         print("The final product and matching target substructure smiles match!")
     else:
