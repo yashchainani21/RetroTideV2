@@ -80,7 +80,7 @@ def get_target_module_dh(double_bond: tuple):
         modj = 0
     else:
         modj = modj.lstrip('M')
-    return int(modi) if modi > modj else int(modj)
+    return int(modi) if int(modi) > int(modj) else int(modj)
 
 def get_target_dh_modules(full_mapping_df: pd.DataFrame, target_mol: Chem.Mol):
     """
@@ -162,6 +162,8 @@ def check_alkene_stereo(mapped_atoms: pd.DataFrame) -> AlkeneCheckResult:
     matching_atoms_2 = []
     mismatching_atoms_1 = []
     mismatching_atoms_2 = []
+    # Ignore alkene stereo NOT set by PKS (i.e. double bond in starter)
+    mapped_atoms = mapped_atoms[mapped_atoms['Product EZ Label'].notna()].copy()
     mapped_atoms['EZ Match'] = mapped_atoms['Target EZ Label'] == mapped_atoms['Product EZ Label']
     mapped_atoms['EZ Mismatch'] = mapped_atoms['Target EZ Label'] != mapped_atoms['Product EZ Label']
     for _, row in mapped_atoms.iterrows():
