@@ -70,8 +70,16 @@ def target_module_dh(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
     return z_targets, e_targets
 
 def get_target_module_dh(double_bond: tuple):
-    modi = (str(double_bond[0])).lstrip('M')
-    modj = (str(double_bond[1])).lstrip('M')
+    modi = str(double_bond[0])
+    modj = str(double_bond[1])
+    if modi == 'LM':
+        modi = 0
+    else:
+        modi = modi.lstrip('M')
+    if modj == 'LM':
+        modj = 0
+    else:
+        modj = modj.lstrip('M')
     return int(modi) if modi > modj else int(modj)
 
 def get_target_dh_modules(full_mapping_df: pd.DataFrame, target_mol: Chem.Mol):
@@ -95,7 +103,7 @@ def e_kr_dh_combo(target_e_module: list):
 
 def check_substrate_ez_compatibility(pks_features: dict, z_mod_num: List[int]):
     """
-    If the module number in pks_features equals the module number in full_mapping_df that has a Z EZ Label with a non-Malonyl substrate, then the Z bond is not possible via PKSs!!
+    Checks if modules intended to produce Z double bonds use Malonyl-CoA as substrate.
     """
     error_ct = 0
     substrate = pks_features['Substrate']
@@ -104,13 +112,6 @@ def check_substrate_ez_compatibility(pks_features: dict, z_mod_num: List[int]):
             error_ct += 1
             print(f"Module {mod} is associated with an intended Z double bond but uses a non-Malonyl-CoA substrate ({substrate[mod]}).")
             print("------This transformation is incompatible with known PKS biosynthesis------")
-    return error_ct
-
-def check_dh_swaps_accuracy(error_ct: int):
-    """
-    # unmatching double bond EZ labels + # incompatible errors
-    """
-    #ADD EZ label mismatches
     return error_ct
 
 def correct_ez_stereo(pks_features: dict, z_mod_num: list, e_mod_num: list) -> dict:

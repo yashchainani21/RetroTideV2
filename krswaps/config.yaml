@@ -1,7 +1,7 @@
-job_name: Borrelidin
-molecule: C[C@H]1C[C@H](C[C@@H]([C@H](/C(=C\C=C\C[C@H](OC(=O)C[C@@H]([C@H](C1)C)O)[C@@H]2CCC[C@H]2C(=O)O)/C#N)O)C)C
+job_name: Cryptofolione
+molecule: C1C=CC(=O)O[C@H]1/C=C/C[C@H](C[C@@H](/C=C/C2=CC=CC=C2)O)O
 output_dir: RetroTideV2/krswaps/results
-starter_codes: trans-1,2-CPDA
-extender_codes: Malonyl-CoA, Methylmalonyl-CoA
+starter_codes: cin
+extender_codes: Malonyl-CoA
 stereo: all
 offload_mech: cyclization
