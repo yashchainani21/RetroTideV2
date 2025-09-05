@@ -260,23 +260,35 @@ class Cluster:
                                  '[*:4][C:5]~[C:6]>>'
                                  '[C:12]/[C:11]=[#6:10]/[C:5]~[C:6]'
                                  '.[*:4].[C:1](=[O:2])[S:3]'))
+                        else: #No DH in prev mod either
+                            rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[#6:10][C:1](=[O:2])[S:3].'
+                                    '[*:4][C:5]~[C:6]>>'
+                                    '[#6:10][C:5]~[C:6]'
+                                    '.[*:4].[C:1](=[O:2])[S:3]'))
                     else: # no previous module
                         rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[#6:10][C:1](=[O:2])[S:3].'
                                     '[*:4][C:5]~[C:6]>>'
                                     '[#6:10][C:5]~[C:6]'
                                     '.[*:4].[C:1](=[O:2])[S:3]'))
                 elif prev_mod and DH not in module.domains: # (i.e. only KR in current domain)
-                    if DH in prev_mod.domains and getattr(prev_mod.domains[DH], "type", None) == "Z":
-                        rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[C:12]/[C:11]=[#6:10]\[C:1](=[O:2])[S:3].'
+                    if ER not in prev_mod.domains: 
+                        if DH in prev_mod.domains and getattr(prev_mod.domains[DH], "type", None) == "Z":
+                            rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[C:12]/[C:11]=[#6:10]\[C:1](=[O:2])[S:3].'
+                                        '[*:4][C:5]~[C:6]>>'
+                                        '[C:12]/[C:11]=[#6:10]\[C:5]~[C:6]'
+                                        '.[*:4].[C:1](=[O:2])[S:3]'))
+                        elif DH in prev_mod.domains and getattr(prev_mod.domains[DH], "type", None) == "E":
+                            rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[C:12]/[C:11]=[#6:10]/[C:1](=[O:2])[S:3].'
                                     '[*:4][C:5]~[C:6]>>'
-                                    '[C:12]/[C:11]=[#6:10]\[C:5]~[C:6]'
+                                    '[C:12]/[C:11]=[#6:10]/[C:5]~[C:6]'
                                     '.[*:4].[C:1](=[O:2])[S:3]'))
-                    elif DH in prev_mod.domains and getattr(prev_mod.domains[DH], "type", None) == "E":
-                        rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[C:12]/[C:11]=[#6:10]/[C:1](=[O:2])[S:3].'
-                                '[*:4][C:5]~[C:6]>>'
-                                '[C:12]/[C:11]=[#6:10]/[C:5]~[C:6]'
-                                '.[*:4].[C:1](=[O:2])[S:3]'))
-                    else: #No DH in prev mod either
+                        else: #No DH in prev mod either
+                            rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[#6:10][C:1](=[O:2])[S:3].'
+                                        '[*:4][C:5]~[C:6]>>'
+                                        '[#6:10][C:5]~[C:6]'
+                                        '.[*:4].[C:1](=[O:2])[S:3]'))
+                    else:
+                        # prev_mod has ER, so prev_mod product is alkane
                         rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[#6:10][C:1](=[O:2])[S:3].'
                                     '[*:4][C:5]~[C:6]>>'
                                     '[#6:10][C:5]~[C:6]'
