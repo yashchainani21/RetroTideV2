@@ -135,7 +135,7 @@ def main(molecule: str):
     chiral_result, alkene_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
 
     pks_features = krswaps.get_bcs_info(pks_design)
-    print("Correcting R/S Stereochemistry)")
+    print("Correcting R/S Stereochemistry")
     pks_features_updated = krswaps.apply_kr_swaps(unbound_product, full_mapping_df,
                                                   chiral_result.mmatch1, pks_features)
     print("Correcting E/Z Stereochemistry")
@@ -150,11 +150,6 @@ def main(molecule: str):
     #Add ez_swaps_score
     if rs_swaps_score is not None and rs_swaps_score < 1.0:
         print("Remaining R/S mismatches cannot be corrected by changing the KR type")
-    if Chem.MolToSmiles(final_prod) == Chem.MolToSmiles(target_mol):
-        print("The final product and matching target substructure smiles match!")
-    else:
-        print("Final product does NOT match the matching target substructure.")
-        
     mol1 = pp.add_atom_labels(unbound_product, chiral_result.cc1)
     mol2 = pp.add_atom_labels(target_mol, chiral_result.cc2)
     mol1_f = pp.add_atom_labels(final_prod, chiral_result_f.cc1)
