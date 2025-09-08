@@ -169,7 +169,10 @@ if __name__ == "__main__":
     results = main(MOLECULE)
     # Output results
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_final_design.json', 'w', encoding='utf-8') as json_file:
-        json.dump([str(mod) for mod in results["final_design"]], json_file, indent=2)
+        json.dump({
+            "Final PKS Design":[str(mod) for mod in results["final_design"]],
+            "Jaccard Similarity Score": results["jaccard"]
+            }, json_file, indent=2)
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_stereo_pre.svg', 'w', encoding='utf-8') as pre_img:
         pre_img.write(results["img_before"])
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_stereo_post.svg', 'w', encoding='utf-8') as post_img:
