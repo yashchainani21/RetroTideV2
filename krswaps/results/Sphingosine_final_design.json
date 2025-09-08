@@ -1,10 +1,16 @@
-[
-  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: True']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
-  "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']"
-]
+{
+  "Final PKS Design": [
+    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: True']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']"
+  ],
+  "Jaccard Similarity Score": 0.31103515625,
+  "Target Molecule": "CCCCCCCCCCCCC/C=C/[C@@H](O)[C@@H](N)CO",
+  "Matching 2D Target Substructure": "CCCCCCCCCCCC/C=C/[C@@H](O)CCO",
+  "Final Product": "CCCCCCCCCCCC/C=C/[C@@H](O)CC(=O)O"
+}
