@@ -67,7 +67,7 @@ def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, ful
     alkene_result_f = dhswaps.check_alkene_stereo(full_mapping_df_f)
     return chiral_result_f, alkene_result_f, final_prod, final_design
 
-def compute_similarity(final_prod, target_mol):
+def compute_similarity(final_prod: Chem.Mol, target_mol: Chem.Mol) -> float:
     """
     Compute the jaccard similarity between the PKS product post KR Swaps and the target
     """
@@ -158,7 +158,10 @@ def main(molecule: str):
         "img_before": plot_stereo_comparison(mol1, mol2, chiral_result, alkene_result),
         "img_after": plot_stereo_comparison(mol1_f, mol2_f, chiral_result_f, alkene_result_f),
         "final_design": final_design,
-        "jaccard": compute_similarity(final_prod, target_mol)
+        "target": Chem.MolToSmiles(Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"]))),
+        "matching_substructure": Chem.MolToSmiles(target_mol),
+        "product": Chem.MolToSmiles(final_prod),
+        "jaccard": compute_similarity(final_prod, Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"])))
     }
 
 if __name__ == "__main__":
@@ -171,7 +174,10 @@ if __name__ == "__main__":
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_final_design.json', 'w', encoding='utf-8') as json_file:
         json.dump({
             "Final PKS Design":[str(mod) for mod in results["final_design"]],
-            "Jaccard Similarity Score": results["jaccard"]
+            "Jaccard Similarity Score": results["jaccard"],
+            "Target Molecule": results["target"],
+            "Matching 2D Target Substructure": results["matching_substructure"],
+            "Final Product": results["product"]
             }, json_file, indent=2)
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_stereo_pre.svg', 'w', encoding='utf-8') as pre_img:
         pre_img.write(results["img_before"])
