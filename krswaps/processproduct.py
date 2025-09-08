@@ -45,7 +45,7 @@ def initial_pks(target: str) -> tuple[list, Chem.Mol]:
         mol (Chem.Mol): The computed product of the PKS design
     """
     designs = designPKS(Chem.MolFromSmiles(target),
-                        maxDesignsPerRound = 200,
+                        maxDesignsPerRound = 500,
                         similarity = 'mcs_without_stereo')
     pks_design = designs[-1][0][0].modules
     mol = designs[-1][0][0].computeProduct(structureDB)
@@ -55,12 +55,23 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
     """
     Determines the size of the largest ring in the target molecule.
     """
+    # Check ester pattern in target
+    ester_oxygen_pattern = '[C:1](=[O:2])[O:3][C:4]'
+    pattern_mol = Chem.MolFromSmarts(ester_oxygen_pattern)
+    matches = target_mol.GetSubstructMatches(pattern_mol)
+
+    # Find largest ring
     ring_info = target_mol.GetRingInfo()
     if not ring_info.AtomRings():
         return 0
     largest_ring = max(ring_info.AtomRings(), key=len)
-    target_size = len(largest_ring) - 1
-    return target_size
+
+    # Determine if largest ring is a lactone
+    if any(idx in largest_ring for match in matches for idx in match):
+        target_size = len(largest_ring) - 1
+        return target_size
+    else:
+        return None
 
 def offload_pks_product(pks_product: Chem.Mol,
                         target_mol: Chem.Mol,
@@ -100,41 +111,43 @@ def offload_pks_product(pks_product: Chem.Mol,
     if pks_release_mechanism == 'cyclization':
         Chem.SanitizeMol(pks_product)
         target_size = target_ring_size(target_mol)
-        
-        if not thioester_matches:
-            print("Warning: No thioester found in PKS product")
+        if target_size != None:
+            if not thioester_matches:
+                print("Warning: No thioester found in PKS product")
+                return (pks_product,)
+            carbonyl_carbon = thioester_matches[0][0]
+            hydroxyl_pattern = '[OH1]'
+            hydroxyl_matches = pks_product.GetSubstructMatches(
+                Chem.MolFromSmarts(hydroxyl_pattern))
+            if not hydroxyl_matches:
+                print("Warning: No hydroxyl groups found")
+                return (pks_product,)
+            for hydroxyl in hydroxyl_matches:
+                oxygen_idx = hydroxyl[0]
+                path = Chem.GetShortestPath(pks_product, carbonyl_carbon, oxygen_idx)
+                distance = len(path) - 1
+                if distance == target_size:
+                    editable_mol = Chem.EditableMol(pks_product)
+                    sulfur_idx = None
+                    for atom in pks_product.GetAtoms():
+                        if atom.GetSymbol() == 'S':
+                            sulfur_idx = atom.GetIdx()
+                            break
+                    if sulfur_idx is not None:
+                        editable_mol.RemoveBond(carbonyl_carbon,
+                                                sulfur_idx)
+                        editable_mol.AddBond(carbonyl_carbon,
+                                                oxygen_idx,
+                                                Chem.rdchem.BondType.SINGLE)
+                        editable_mol.RemoveAtom(sulfur_idx)
+                        unbound_mol = editable_mol.GetMol()
+                        Chem.SanitizeMol(unbound_mol)
+                        return (unbound_mol,)
+            print(f"No hydroxyl found at target distance {target_size}")
             return (pks_product,)
-        
-        carbonyl_carbon = thioester_matches[0][0]
-        hydroxyl_pattern = '[OH1]'
-        hydroxyl_matches = pks_product.GetSubstructMatches(
-            Chem.MolFromSmarts(hydroxyl_pattern))
-        if not hydroxyl_matches:
-            print("Warning: No hydroxyl groups found")
+        else:
+            print("Warning: No valid lactone size found in target molecule")
             return (pks_product,)
-        for hydroxyl in hydroxyl_matches:
-            oxygen_idx = hydroxyl[0]
-            path = Chem.GetShortestPath(pks_product, carbonyl_carbon, oxygen_idx)
-            distance = len(path) - 1
-            if distance == target_size:
-                editable_mol = Chem.EditableMol(pks_product)
-                sulfur_idx = None
-                for atom in pks_product.GetAtoms():
-                    if atom.GetSymbol() == 'S':
-                        sulfur_idx = atom.GetIdx()
-                        break
-                if sulfur_idx is not None:
-                    editable_mol.RemoveBond(carbonyl_carbon,
-                                            sulfur_idx)
-                    editable_mol.AddBond(carbonyl_carbon,
-                                            oxygen_idx,
-                                            Chem.rdchem.BondType.SINGLE)
-                    editable_mol.RemoveAtom(sulfur_idx)
-                    unbound_mol = editable_mol.GetMol()
-                    Chem.SanitizeMol(unbound_mol)
-                    return (unbound_mol,)
-        print(f"No hydroxyl found at target distance {target_size}")
-        return (pks_product,)
     return (unbound_mol,)
 
 def module_mapping(pks_design: list) -> Chem.Mol:
