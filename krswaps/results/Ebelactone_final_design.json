@@ -1,0 +1,9 @@
+[
+  "[\"AT{'substrate': 'Malonyl-CoA'}\", 'loading: True']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B2'}\", 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C2'}\", 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+  "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A2'}\", 'loading: False']"
+]
