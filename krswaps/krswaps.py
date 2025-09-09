@@ -36,6 +36,7 @@ def get_bcs_info(pks_design: list)-> dict:
         'Substrate': [],
         'KR Type': [],
         'DH Type' : [],
+        'ER Type' : [],
         'DH' : [],
         'ER' : []
     }
@@ -54,12 +55,16 @@ def get_bcs_info(pks_design: list)-> dict:
                 pks_features['DH'].append(False)
                 pks_features['DH Type'].append(None)        
             if bcs.ER in module.domains:
+                er_type = module.domains[bcs.ER].type
+                pks_features['ER Type'].append(er_type)
                 pks_features['ER'].append(True)
             else:
                 pks_features['ER'].append(False)
+                pks_features['ER Type'].append(None)
         else:
             pks_features['KR Type'].append(None)
             pks_features['DH Type'].append(None)
+            pks_features['ER Type'].append(None)
             pks_features['DH'].append(False)
             pks_features['ER'].append(False)
     return pks_features
@@ -381,8 +386,8 @@ def new_design(pks_features:dict) -> Chem.Mol:
             if pks_features['DH Type'][idx] is not None:
                 domains_dict.update({bcs.DH: bcs.DH(active=True,
                                                     type=pks_features['DH Type'][idx])})
-            if pks_features['ER'][idx]:
-                domains_dict.update({bcs.ER: bcs.ER(active=True)})
+            if pks_features['ER Type'][idx] is not None:
+                domains_dict.update({bcs.ER: bcs.ER(active=True, type=pks_features['ER Type'][idx])})
             module = bcs.Module(domains=domains_dict, loading=False)
             modules.append(module)
     cluster_f = bcs.Cluster(modules=modules)
@@ -400,6 +405,33 @@ def apply_kr_swaps(unbound_product, full_mapping_df, mmatch1, pks_features):
     pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
     pks_features_updated = kr_swaps(pks_features, pattern_results, mmatch1)
     return pks_features_updated
+
+def apply_er_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, mmatch1_f: list, unbound_product: Chem.Mol) -> dict:
+    """
+    If remaining alpha substituted chiral mismatches and an ER domain is present,
+    swap the ER type
+    """
+    pairs = find_adjacent_backbone_carbon_pairs(unbound_product, full_mapping_df)
+    sequential_pairs = filter_sequential_module_pairs(pairs)
+    pairs_with_mismatches = report_pairs_with_chiral_mismatches(sequential_pairs, mmatch1_f)
+    pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
+    atoms = check_atoms_to_process(pattern_results, mmatch1_f)
+    for atom_info in atoms:
+        mismatched_atom = atom_info['atom']
+        mismatched_module = atom_info['module']
+        mismatched_patterns = atom_info['patterns']
+        is_alpha = 'alpha_substituted' in mismatched_patterns
+        if is_alpha:
+            target_module_number = identify_module_to_edit(mismatched_module, False, False)
+            if pks_features['ER'][target_module_number]:
+                old_er_type = pks_features['ER Type'][target_module_number]
+                new_er_type = 'D' if old_er_type == 'L' else 'L'
+                pks_features['ER Type'][target_module_number] = new_er_type
+                print(f"------Updating M{target_module_number}------")
+                print(f"Swapped ER type from {old_er_type} to {new_er_type}")
+            else:
+                print(f"No ER domain in module {target_module_number} - cannot swap ER type")
+    return pks_features
 
 def check_swaps_accuracy(match, mmatch):
     """
