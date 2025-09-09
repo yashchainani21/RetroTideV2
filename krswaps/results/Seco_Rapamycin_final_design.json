@@ -1,23 +1,23 @@
 {
   "Final PKS Design": [
     "[\"AT{'substrate': 'DHCH'}\", 'loading: True']",
-    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C2'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C2'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", 'ER{}', 'loading: False']",
+    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']"
   ],
-  "Jaccard Similarity Score": 0.2265625,
+  "Jaccard Similarity Score": 0.2333984375,
   "Target Molecule": "CO[C@@H](C[C@@H]1CC[C@@H](C)[C@](O)(C(=O)C(=O)N2CCCC[C@H]2C(=O)O)O1)/C(C)=C/C=C/C=C/[C@@H](C)C[C@@H](C)C(=O)[C@H](OC)[C@H](O)/C(C)=C/[C@@H](C)C(=O)/C=C/[C@H](C)C[C@@H]1CC[C@@H](O)[C@H](OC)C1",
   "Matching 2D Target Substructure": "C/C(=C\\C=C\\C=C\\[C@@H](C)C[C@@H](C)C(=O)C[C@H](O)/C(C)=C/[C@@H](C)C(=O)/C=C/[C@H](C)C[C@@H]1CC[C@@H](O)[C@H](O)C1)[C@H](C)O",
-  "Final Product": "C/C(=C\\[C@@H](C)C(=O)/C=C/[C@@H](C)CC1CC[C@H](O)[C@H](O)C1)[C@@H](O)CC(=O)[C@H](C)C[C@H](C)/C=C/C=C/C=C(\\C)[C@@H](O)C[C@@H](O)CC[C@H](C)[C@@H](O)CC(=O)O"
+  "Final Product": "C/C(=C\\[C@@H](C)C(=O)/C=C/[C@H](C)CC1CC[C@H](O)[C@H](O)C1)[C@@H](O)CC(=O)[C@H](C)C[C@H](C)/C=C/C=C/C=C(\\C)[C@@H](O)C[C@@H](O)CC[C@@H](C)[C@@H](O)CC(=O)O"
 }
