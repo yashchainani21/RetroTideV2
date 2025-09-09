@@ -1132,6 +1132,22 @@ class ER(Domain):
     Keatinge-Clay, Adrian T. "The structures of type I polyketide synthases." Natural product reports 29.10 (2012): 1050-1073.
     doi: 10.1039/c2np20019h
     """
+    TYPE_CHOICES = {'L', 'D'}
+
+    def __init__(self, active: bool, type:str):
+        """
+        Initializes a new ER domain with specified activity and type.
+
+        Args:
+            active (bool): Indicates whether the domain is active.
+            type (str): The type of the ER domain, must be one of the specified TYPE_CHOICES.
+        
+        Raises:
+            AssertionError: If the type is not one of the specified TYPE_CHOICES.
+        """
+        assert type in self.TYPE_CHOICES, f"Type {type} is not a valid ER domain type."
+        super().__init__(active)
+        self.type = type
         
     @classmethod
     @override
@@ -1148,17 +1164,19 @@ class ER(Domain):
         """
         # adding False as a design type specifies that this domain is optional,
         # e.g. a PKS can exist without it
+        updatedTypeChoices = copy(cls.TYPE_CHOICES)
+        
         if not module:
-            return [cls(active=True), cls(active=False)]
+            return [cls(active=True, type=type) for type in updatedTypeChoices] + [cls(active=False, type = 'L')]
 
         if not DH in module.domains:
-            return [cls(active=False)]
+            return [cls(active=False, type = 'L')]
 
         # require that we have an active DH type (NEED TO REQUIRE AN ACTIVE DH TYPE E ONLY)
         if module.domains[DH].active and (module.domains[DH].type in {'E'}):
-            return [cls(active=True), cls(active=False)]
+            return [cls(active=True, type=type) for type in updatedTypeChoices] + [cls(active=False, type = 'L')]
         else:
-            return [cls(active=False)]
+            return [cls(active=False, type = 'L')]
 
     def operation(self, chain: Mol) -> Mol:
         """
@@ -1183,10 +1201,19 @@ class ER(Domain):
         prod = rxn.RunReactants((chain,))[0][0]
         try:
             Chem.SanitizeMol(prod)
-        except ValueError: 
-            rxn = AllChem.ReactionFromSmarts(('[#0:1]/[C:2]=[C:3]/[C:4](=[O:5])[S:6]>>'
-                                              '[#0:1][CH2:2][C@@H1:3][C:4](=[O:5])[S:6]'))
-                                              # '[#0:1][CH2:2][CH:3][C:4](=[O:5])[S:6]'))
+        except ValueError:
+            if self.type == 'L':
+                rxn = AllChem.ReactionFromSmarts(('[#0:1]/[C:2]=[C:3]/[C:4](=[O:5])[S:6]>>'
+                                                '[#0:1][CH2:2][C@@H1:3][C:4](=[O:5])[S:6]'))
+                                                # '[#0:1][CH2:2][CH:3][C:4](=[O:5])[S:6]'))
+            elif self.type == 'D':
+                rxn = AllChem.ReactionFromSmarts(('[#0:1]/[C:2]=[C:3]/[C:4](=[O:5])[S:6]>>'
+                                                '[#0:1][CH2:2][C@H1:3][C:4](=[O:5])[S:6]'))
+                                                # '[#0:1][CH2:2][CH:3][C:4](=[O:5])[S:6]'))
+            else:
+                rxn = AllChem.ReactionFromSmarts(('[#0:1]/[C:2]=[C:3]/[C:4](=[O:5])[S:6]>>'
+                                                '[#0:1][CH2:2][CH1:3][C:4](=[O:5])[S:6]'))
+                                                # '[#0:1][CH2:2][CH:3][C:4](=[O:5])[S:6]'))
             prod = rxn.RunReactants((chain,))[0][0]
         return prod
         
