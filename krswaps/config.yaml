@@ -1,7 +1,7 @@
-job_name: Cryptofolione
-molecule: C1C=CC(=O)O[C@H]1/C=C/C[C@H](C[C@@H](/C=C/C2=CC=CC=C2)O)O
+job_name: Seco_Rapamycin
+molecule: C[C@@H]1CC[C@H](O[C@]1(C(=O)C(=O)N2CCCC[C@H]2C(=O)O)O)C[C@@H](/C(=C/C=C/C=C/[C@@H](C)C[C@@H](C)C(=O)[C@@H]([C@@H](/C(=C/[C@@H](C)C(=O)/C=C/[C@H](C)C[C@@H]3CC[C@H]([C@@H](C3)OC)O)/C)O)OC)/C)OC
 output_dir: RetroTideV2/krswaps/results
-starter_codes: cin
-extender_codes: Malonyl-CoA
+starter_codes: DHCH
+extender_codes: Malonyl-CoA, Methylmalonyl-CoA
 stereo: all
-offload_mech: cyclization
+offload_mech: thiolysis
