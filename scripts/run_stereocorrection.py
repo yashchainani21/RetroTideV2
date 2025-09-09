@@ -145,11 +145,19 @@ def main(molecule: str):
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
-    
+    print("Correcting any remaining R/S Mismatches")
+    if len(chiral_result_f.mmatch1) != 0:
+        pks_features_er_swapped = krswaps.apply_er_swaps(pks_features_dh_swapped,
+                                                         full_mapping_df,
+                                                         chiral_result_f.mmatch1,
+                                                         unbound_product)
+        chiral_result_f, alkene_result_f, final_prod, final_design = postprocessing(pks_features_er_swapped,
+                                                               pks_design,
+                                                               target_mol,
+                                                               full_mapping_df)
     rs_swaps_score = krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1)
-    #Add ez_swaps_score
     if rs_swaps_score is not None and rs_swaps_score < 1.0:
-        print("Remaining R/S mismatches cannot be corrected by changing the KR type")
+        print(f"The remaining {len(chiral_result_f.mmatch1)} R/S mismatches cannot be corrected by changing the KR type")
     mol1 = pp.add_atom_labels(unbound_product, chiral_result.cc1)
     mol2 = pp.add_atom_labels(target_mol, chiral_result.cc2)
     mol1_f = pp.add_atom_labels(final_prod, chiral_result_f.cc1)
