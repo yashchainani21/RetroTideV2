@@ -145,8 +145,8 @@ def main(molecule: str):
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
-    print("Correcting any remaining R/S Mismatches")
     if len(chiral_result_f.mmatch1) != 0:
+        print("Correcting any remaining R/S Mismatches")
         pks_features_er_swapped = krswaps.apply_er_swaps(pks_features_dh_swapped,
                                                          full_mapping_df,
                                                          chiral_result_f.mmatch1,
