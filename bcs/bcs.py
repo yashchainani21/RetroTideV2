@@ -232,7 +232,7 @@ class Cluster:
                                     '[*:4][C:5]=[C:6][C:7]>>'
                                     '[#6:10]/[C:5]=[C:6]/[C:7]'
                                     '.[*:4].[C:1](=[O:2])[S:3]')) # Keep E stereo
-                    else: # no previous module
+                    else: # no previous module ( - to alkene)
                         if getattr(module.domains[DH], "type", None) == "Z":
                             rxn: ChemicalReaction = AllChem.ReactionFromSmarts(('[#6:10][C:1](=[O:2])[S:3].'
                                  '[*:4][C:5]=[C:6][C:7]>>'
