@@ -1,4 +1,6 @@
 {
+  "Target Molecule": "C[C@@](O)(/C=C/[C@H]1CC=CC(=O)O1)[C@@H](C[C@@H](O)/C=C\\C=C/C=C/CO)OP(=O)(O)O",
+  "Matching 2D Target Substructure": "C/C=C/C=C\\C=C/[C@H](O)C[C@@H](O)C/C=C/[C@H]1CC=CC(=O)O1",
   "Final PKS Design": [
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: True']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
@@ -10,8 +12,7 @@
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'A'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']"
   ],
-  "Jaccard Similarity Score": 0.28564453125,
-  "Target Molecule": "C[C@@](O)(/C=C/[C@H]1CC=CC(=O)O1)[C@@H](C[C@@H](O)/C=C\\C=C/C=C/CO)OP(=O)(O)O",
-  "Matching 2D Target Substructure": "C/C=C/C=C\\C=C/[C@H](O)C[C@@H](O)C/C=C/[C@H]1CC=CC(=O)O1",
-  "Final Product": "CC/C=C/C=C\\C=C/[C@H](O)C[C@@H](O)C/C=C/[C@H]1CC=CC(=O)O1"
+  "Final PKS Product": "CC/C=C/C=C\\C=C/[C@H](O)C[C@@H](O)C/C=C/[C@H]1CC=CC(=O)O1",
+  "Initial Jaccard Similarity": 0.2099609375,
+  "Jaccard Similarity Score": 0.28564453125
 }

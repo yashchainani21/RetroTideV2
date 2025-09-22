@@ -1,8 +1,11 @@
-"""Module for processing PKS products before stereo correction."""
+"""
+Module for processing PKS products before stereo correction.
+@author: Kenna Roberts
+"""
 # pylint: disable=no-member
 from collections import namedtuple
 from rdkit import Chem
-from rdkit.Chem import AllChem, rdFMCS
+from rdkit.Chem import rdFMCS
 import pandas as pd
 from retrotide import structureDB, designPKS, compareToTarget
 import bcs
@@ -59,19 +62,16 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
     ester_oxygen_pattern = '[C:1](=[O:2])[O:3][C:4]'
     pattern_mol = Chem.MolFromSmarts(ester_oxygen_pattern)
     matches = target_mol.GetSubstructMatches(pattern_mol)
-
-    # Find largest ring
     ring_info = target_mol.GetRingInfo()
-    if not ring_info.AtomRings():
-        return 0
-    largest_ring = max(ring_info.AtomRings(), key=len)
-
-    # Determine if largest ring is a lactone
-    if any(idx in largest_ring for match in matches for idx in match):
-        target_size = len(largest_ring) - 1
-        return target_size
-    else:
-        return None
+    target_sizes = []
+    for ring in ring_info.AtomRings():
+        if not ring_info.AtomRings():
+            target_sizes.append(int(0))
+        if any(idx in ring for match in matches for idx in match):
+            target_sizes.append((len(ring) - 1))
+        else:
+            target_sizes.append(int(0))
+    return max(target_sizes)
 
 def offload_pks_product(pks_product: Chem.Mol,
                         target_mol: Chem.Mol,
@@ -111,7 +111,7 @@ def offload_pks_product(pks_product: Chem.Mol,
     if pks_release_mechanism == 'cyclization':
         Chem.SanitizeMol(pks_product)
         target_size = target_ring_size(target_mol)
-        if target_size != None:
+        if target_size != 0:
             if not thioester_matches:
                 print("Warning: No thioester found in PKS product")
                 return (pks_product,)
@@ -145,9 +145,8 @@ def offload_pks_product(pks_product: Chem.Mol,
                         return (unbound_mol,)
             print(f"No hydroxyl found at target distance {target_size}")
             return (pks_product,)
-        else:
-            print("Warning: No valid lactone size found in target molecule")
-            return (pks_product,)
+        print("Warning: No valid lactone found in target molecule")
+        return (pks_product,)
     return (unbound_mol,)
 
 def module_mapping(pks_design: list) -> Chem.Mol:
@@ -194,6 +193,13 @@ def matching_target_atoms(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> tuple[
 def extract_target_substructure(target_mol: Chem.Mol, selected_atoms: list) -> Chem.Mol:
     """
     Remove unselected atoms and bonds from a molecule while preserving the original atom indices.
+
+    Args:
+        target_mol (Chem.Mol): The target molecule
+        selected_atoms (list): List of atom indices in the matching substructure
+    
+    Returns:
+        result_mol (Chem.Mol): The PKS replicated substructure of the target molecule
     """
     mol_copy = Chem.Mol(target_mol)
     # Store original atom indices
@@ -219,7 +225,8 @@ def extract_target_substructure(target_mol: Chem.Mol, selected_atoms: list) -> C
         editable_mol.RemoveAtom(atom_idx)
     result_mol = editable_mol.GetMol()
     try:
-        Chem.SanitizeMol(result_mol, sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
+        Chem.SanitizeMol(result_mol,
+                         sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
     except Exception:
         try:
             Chem.SanitizeMol(result_mol,
@@ -374,6 +381,5 @@ def check_mcs(unbound_product, target_mol):
 
         mcs_mapped_atoms_df = map_product_to_target(unbound_product, mol2_submol)
         return mol2_submol, mcs_mapped_atoms_df
-    else:
-        mcs_mapped_atoms_df = map_product_to_target(unbound_product, target_mol)
-        return target_mol, mcs_mapped_atoms_df
+    mcs_mapped_atoms_df = map_product_to_target(unbound_product, target_mol)
+    return target_mol, mcs_mapped_atoms_df

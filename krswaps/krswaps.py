@@ -1,8 +1,8 @@
-'''
+"""
 Module to handle KR swaps based on chiral mismatches between the PKS product and target molecule
 
 @author: Kenna Roberts
-'''
+"""
 # pylint: disable=no-member
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -29,7 +29,8 @@ def get_bcs_info(pks_design: list)-> dict:
 
     Returns:
         pks_features (dict): Dictionary with information about the intial PKS design,
-        including module number, substrate, KR type, and whether DH or ER domains are present.
+        including module number, substrate, KR, DH, and ER subtypes, and whether DH
+        or ER domains are present.
     """
     pks_features = {
         'Module Number': [],
@@ -141,7 +142,14 @@ def filter_sequential_module_pairs(adjacent_pairs: list) -> list:
 
 def report_pairs_with_chiral_mismatches(sequential_pairs: list, mmatch1: list) -> list:
     """
-    Cross references each pairs with the list of mismatched chiral centers
+    Cross references each pair with the list of mismatched chiral centers
+
+    Args:
+        sequential_pairs (list): List of tuples with pairs of backbone carbon atoms
+        mmatch1 (list): List of atom indices with chiral mismatches
+
+    Returns:
+        mismatch_pairs (list): List of pairs that have at least one chiral mismatch
     """
     mismatch_pairs = []
     for atom1_idx, module1, atom2_idx, module2 in sequential_pairs:
@@ -157,9 +165,11 @@ def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
     alpha_carbon_patterns = [
         '[C:1][C:2](=[O:3])',
         '[C:1][C:2][OH:3]',
+        '[C:1][C:2][O:3]',
         '[C:1][C:2](=[O:3])[O:4][C:5]',
         '[C:1]/[C:2]=[C:3]/[C:4]',
-        '[C:1]/[C:2]=[C:3]\[C:4]' 
+        '[C:1]/[C:2]=[C:3]\[C:4]',
+        '[C:1]([CH2:2])[CH2:3]'
     ]
     results = {'atom1' : [], 'atom2': []}
     for smarts in alpha_carbon_patterns:
@@ -242,6 +252,7 @@ def check_substituent_patterns(mol: Chem.Mol, mismatch_pairs: list) -> list:
 def identify_module_to_edit(mismatched_module: str, is_hydroxyl: bool, is_ester: bool) -> int:
     """
     Identify which module to perform a KR swap on
+    Target Module is Mi+1
     """
     if mismatched_module == 'LM':
         target_module =  1
