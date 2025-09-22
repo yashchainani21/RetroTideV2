@@ -7,7 +7,7 @@ from typing import Optional, List
 import json
 import yaml
 from rdkit import Chem
-from rdkit.Chem import Draw
+from rdkit.Chem import AllChem, Draw
 import bcs
 
 def load_config(config_path="config.yaml"):
@@ -43,7 +43,15 @@ from krswaps import similarity as sm
 def preprocessing(unbound_product: Chem.Mol, target_mol: Chem.Mol):
     """
     Map PKS product to the target and assess correspondence between each
-    chiral center
+    chiral center and each alkene
+
+    Returns:
+        chiral_result (namedtuple): Atom indices corresponding to matching and mismatching
+        chiral centers
+        alkene_result (namedtuple): Atom indices corresponding to matching and mismatching
+        alkenes
+        full_mapping_df (pd.DataFrame): Atom and module mapping between product and target
+        target_mol (Chem.Mol): PKS replicated target substructure
     """
     target_mol, mcs_mapped_atoms_df = pp.check_mcs(unbound_product, target_mol)
     full_mapping_df = dhswaps.ez_atom_labels(unbound_product, target_mol,
@@ -57,7 +65,16 @@ def preprocessing(unbound_product: Chem.Mol, target_mol: Chem.Mol):
 
 def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, full_mapping_df):
     """
-    Use new KR types to reconstruct the initial PKS design and its corresponding product
+    Use new KR-DH-ER subtypes to reconstruct the initial PKS design and output its
+    corresponding product
+
+    Returns:
+        chiral_result_f (namedtuple): Atom indices corresponding to matching and mismatching
+        chiral centers
+        alkene_result_f (namedtuple): Atom indices corresponding to matching and mismatching
+        alkenes
+        final_prod (Chem.Mol): PKS product after stereocorrection
+        final_design (List[bcs.Module]): PKS design after stereocorrection
     """
     final_design = krswaps.new_design(pks_features_updated)[1]
     mapped_final_prod = pp.module_mapping(final_design)
@@ -67,18 +84,19 @@ def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, ful
     alkene_result_f = dhswaps.check_alkene_stereo(full_mapping_df_f)
     return chiral_result_f, alkene_result_f, final_prod, final_design
 
-def compute_similarity(final_prod: Chem.Mol, target_mol: Chem.Mol) -> float:
+def compute_similarity(pks_prod: Chem.Mol, target_mol: Chem.Mol) -> float:
     """
-    Compute the jaccard similarity between the PKS product post KR Swaps and the target
+    Compute the jaccard similarity between the PKS product and the user defined
+    target molecule
     """
-    fp_prod = fp.get_fingerprint(Chem.MolToSmiles(final_prod), 'mapchiral')
+    fp_prod = fp.get_fingerprint(Chem.MolToSmiles(pks_prod), 'mapchiral')
     fp_target = fp.get_fingerprint(Chem.MolToSmiles(target_mol), 'mapchiral')
     jaccard_score = sm.get_similarity(fp_prod, fp_target, 'jaccard')
     return jaccard_score
 
 def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene_result):
     """
-    Visualize results
+    Visualize stereochemistry correspondence between two molecules
     """
     highlight_1 = {}
     highlight_2 = {}
@@ -118,6 +136,10 @@ def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene
     bond_indices_2 = [bond.GetIdx() for bond in mol2.GetBonds()
                       if bond.GetBeginAtomIdx() in all_bonds_2
                       and bond.GetEndAtomIdx() in all_bonds_2]
+    
+    #Match 2D coordinates for better visualization
+    AllChem.Compute2DCoords(mol1)
+    AllChem.GenerateDepictionMatching2DStructure(mol2, mol1, acceptFailure=True)
 
     return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
                                 molsPerRow=2, highlightAtomLists=[all_1, all_2],
@@ -169,7 +191,8 @@ def main(molecule: str):
         "target": Chem.MolToSmiles(Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"]))),
         "matching_substructure": Chem.MolToSmiles(target_mol),
         "product": Chem.MolToSmiles(final_prod),
-        "jaccard": compute_similarity(final_prod, Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"])))
+        "jaccard_i": compute_similarity(unbound_product, Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"]))),
+        "jaccard_f": compute_similarity(final_prod, Chem.MolFromSmiles(pp.canonicalize_smiles(molecule, config["stereo"])))
     }
 
 if __name__ == "__main__":
@@ -181,11 +204,12 @@ if __name__ == "__main__":
     # Output results
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_final_design.json', 'w', encoding='utf-8') as json_file:
         json.dump({
-            "Final PKS Design":[str(mod) for mod in results["final_design"]],
-            "Jaccard Similarity Score": results["jaccard"],
             "Target Molecule": results["target"],
             "Matching 2D Target Substructure": results["matching_substructure"],
-            "Final Product": results["product"]
+            "Final PKS Design":[str(mod) for mod in results["final_design"]],
+            "Final PKS Product": results["product"],
+            "Initial Jaccard Similarity": results["jaccard_i"],
+            "Final Jaccard Similarity Score": results["jaccard_f"]
             }, json_file, indent=2)
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_stereo_pre.svg', 'w', encoding='utf-8') as pre_img:
         pre_img.write(results["img_before"])
