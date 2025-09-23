@@ -12,7 +12,7 @@ import bcs
 
 def load_config(config_path="config.yaml"):
     """
-    Load configuration from a YAML file.
+    Load parameters from a YAML config file
     """
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -46,15 +46,13 @@ def preprocessing(unbound_product: Chem.Mol, target_mol: Chem.Mol):
     chiral center and each alkene
 
     Returns:
-        chiral_result (namedtuple): Atom indices corresponding to matching and mismatching
-        chiral centers
-        alkene_result (namedtuple): Atom indices corresponding to matching and mismatching
-        alkenes
+        chiral_result (namedtuple): Atom indices corresponding to matching and mismatching chiral centers
+        alkene_result (namedtuple): Atom indices corresponding to matching and mismatching alkenes
         full_mapping_df (pd.DataFrame): Atom and module mapping between product and target
         target_mol (Chem.Mol): PKS replicated target substructure
     """
     target_mol, mcs_mapped_atoms_df = pp.check_mcs(unbound_product, target_mol)
-    full_mapping_df = dhswaps.ez_atom_labels(unbound_product, target_mol,
+    full_mapping_df = dhswaps.extract_ez_labels(unbound_product, target_mol,
                                              pp.full_mapping(mcs_mapped_atoms_df,
                                                              pp.map_product_to_pks_modules(unbound_product)))
     chiral_result = pp.check_chiral_centers(unbound_product,
@@ -69,17 +67,15 @@ def postprocessing(pks_features_updated, final_design, target_mol: Chem.Mol, ful
     corresponding product
 
     Returns:
-        chiral_result_f (namedtuple): Atom indices corresponding to matching and mismatching
-        chiral centers
-        alkene_result_f (namedtuple): Atom indices corresponding to matching and mismatching
-        alkenes
+        chiral_result_f (namedtuple): Atom indices corresponding to matching and mismatching chiral centers
+        alkene_result_f (namedtuple): Atom indices corresponding to matching and mismatching alkenes
         final_prod (Chem.Mol): PKS product after stereocorrection
         final_design (List[bcs.Module]): PKS design after stereocorrection
     """
     final_design = krswaps.new_design(pks_features_updated)[1]
     mapped_final_prod = pp.module_mapping(final_design)
     final_prod = pp.offload_pks_product(mapped_final_prod, target_mol, config["offload_mech"])[0]
-    full_mapping_df_f = dhswaps.ez_atom_labels(final_prod, target_mol, full_mapping_df)
+    full_mapping_df_f = dhswaps.extract_ez_labels(final_prod, target_mol, full_mapping_df)
     chiral_result_f = pp.check_chiral_centers(final_prod, target_mol, full_mapping_df)
     alkene_result_f = dhswaps.check_alkene_stereo(full_mapping_df_f)
     return chiral_result_f, alkene_result_f, final_prod, final_design
@@ -150,23 +146,32 @@ def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene
 
 def main(molecule: str):
     """
-    Perform post processing stereo correction on RetroTide proposed PKS design
+    Perform post processing stereo correction on a RetroTide proposed PKS design
     """
+    # Obtain RetroTide PKS design and initial product stereochemistry
     target_mol, pks_design, unbound_product = pp.initialize_pks_product(
         pp.canonicalize_smiles(molecule, config["stereo"]), config["offload_mech"])
+    # Assess initial stereochemistry correspondence
     chiral_result, alkene_result, full_mapping_df, target_mol = preprocessing(unbound_product, target_mol)
-
     pks_features = krswaps.get_bcs_info(pks_design)
-    print("Correcting R/S Stereochemistry")
-    pks_features_updated = krswaps.apply_kr_swaps(unbound_product, full_mapping_df,
-                                                  chiral_result.mmatch1, pks_features)
-    print("Correcting E/Z Stereochemistry")
-    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_updated, full_mapping_df, target_mol)
 
+    # Implement KR swaps
+    print("Correcting R/S Stereochemistry")
+    pks_features_kr_swapped = krswaps.apply_kr_swaps(unbound_product, full_mapping_df,
+                                                  chiral_result.mmatch1, pks_features)
+    
+    # Implement DH swaps
+    print("Correcting E/Z Stereochemistry")
+    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_kr_swapped, full_mapping_df,
+                                                     target_mol)
+    
+    # Assess stereochemistry correspondence after KR and DH swaps
     chiral_result_f, alkene_result_f, final_prod, final_design = postprocessing(pks_features_dh_swapped,
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
+    
+    # Resolve remaining R/S mismatches using ER swaps
     if len(chiral_result_f.mmatch1) != 0:
         print("Correcting any remaining R/S Mismatches")
         pks_features_er_swapped = krswaps.apply_er_swaps(pks_features_dh_swapped,
@@ -177,6 +182,8 @@ def main(molecule: str):
                                                                pks_design,
                                                                target_mol,
                                                                full_mapping_df)
+        
+    # Check for any R/S mismatches not resolved by stereocorrections
     rs_swaps_score = krswaps.check_swaps_accuracy(chiral_result_f.match1, chiral_result_f.mmatch1)
     if rs_swaps_score is not None and rs_swaps_score < 1.0:
         print(f"The remaining {len(chiral_result_f.mmatch1)} R/S mismatches cannot be corrected by changing the KR type")
@@ -201,7 +208,7 @@ if __name__ == "__main__":
     OUTPUT_DIR = config["output_dir"]
 
     results = main(MOLECULE)
-    # Output results
+    # Output results in JSON and SVG formats
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_final_design.json', 'w', encoding='utf-8') as json_file:
         json.dump({
             "Target Molecule": results["target"],
@@ -209,7 +216,7 @@ if __name__ == "__main__":
             "Final PKS Design":[str(mod) for mod in results["final_design"]],
             "Final PKS Product": results["product"],
             "Initial Jaccard Similarity": results["jaccard_i"],
-            "Final Jaccard Similarity Score": results["jaccard_f"]
+            "Final Jaccard Similarity": results["jaccard_f"]
             }, json_file, indent=2)
     with open(f'{OUTPUT_DIR}/{JOB_NAME}_stereo_pre.svg', 'w', encoding='utf-8') as pre_img:
         pre_img.write(results["img_before"])
