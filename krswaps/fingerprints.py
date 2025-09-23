@@ -3,6 +3,13 @@ from rdkit.Chem import AllChem, rdFingerprintGenerator
 from mapchiral.mapchiral import encode
 
 def get_fingerprint(molecule_str: str, fp_type: str):
+    """
+    Get molecular fingerprint using different methods
+
+    Args:
+        molecule_str (str): SMILES string of the molecule
+        fp_type (str): Type of fingerprinting method
+    """
     mol = Chem.MolFromSmiles(molecule_str)
     if fp_type == "morgan_2D":
         fpgen = rdFingerprintGenerator.GetMorganGenerator(radius = 2, fpSize = 2048)
