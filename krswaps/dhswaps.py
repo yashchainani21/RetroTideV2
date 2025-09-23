@@ -1,7 +1,5 @@
 """
 Module to handle DH swaps based on alkene mismatches between the PKS product and target molecule
-
-@author: Kenna Roberts
 """
 # pylint: disable=no-member
 from collections import namedtuple
@@ -11,7 +9,7 @@ import pandas as pd
 
 def extract_ez_atoms(mol):
     """
-    Returns lists of tuples for each (Z) and (E) double bond.
+    Identify atoms involved in Z and E alkenes present
     """
     z_bonds = []
     e_bonds = []
@@ -25,24 +23,17 @@ def extract_ez_atoms(mol):
                 z_bonds.append((begin_idx, end_idx))
             elif stereo == Chem.BondStereo.STEREOE:
                 e_bonds.append((begin_idx, end_idx))
-    return z_bonds, e_bonds
+    z_set = set(idx for pair in z_bonds for idx in pair)
+    e_set = set(idx for pair in e_bonds for idx in pair)
+    return z_set, e_set, z_bonds, e_bonds
 
-def track_doublebond_info(mol: Chem.Mol):
-    """
-    Store atom indices for each Z and E alkene present
-    """
-    targ_z, targ_e = extract_ez_atoms(mol)
-    z_set = set(idx for pair in targ_z for idx in pair)
-    e_set = set(idx for pair in targ_e for idx in pair)
-    return z_set, e_set
-
-def ez_atom_labels(pks_product: Chem.Mol, target_mol: Chem.Mol, full_mapping_df: pd.DataFrame):
+def extract_ez_labels(pks_product: Chem.Mol, target_mol: Chem.Mol, full_mapping_df: pd.DataFrame):
     """
     Append Z and E labels to the full mapping dataframe
     """
-    z_prod_set, e_prod_set = track_doublebond_info(pks_product)
-    z_targ_set, e_targ_set = track_doublebond_info(target_mol)
-    def get_bond_info(idx: int, mol: Chem.Mol, z_set, e_set):
+    z_prod_set, e_prod_set, z_bonds, e_bonds = extract_ez_atoms(pks_product)
+    z_targ_set, e_targ_set, z_targ_bonds, e_targ_bonds = extract_ez_atoms(target_mol)
+    def get_bond_label(idx: int, mol: Chem.Mol, z_set, e_set):
         if idx in z_set:
             atom = mol.GetAtomWithIdx(idx)
             is_double_bond = any(bond.GetBondType() == Chem.BondType.DOUBLE for bond in atom.GetBonds())
@@ -55,17 +46,17 @@ def ez_atom_labels(pks_product: Chem.Mol, target_mol: Chem.Mol, full_mapping_df:
                 return "E"
         return None
     full_mapping_df['Product EZ Label'] = full_mapping_df['Product Atom Idx'].apply(
-        lambda idx: get_bond_info(idx, pks_product, z_prod_set, e_prod_set))
+        lambda idx: get_bond_label(idx, pks_product, z_prod_set, e_prod_set))
     full_mapping_df['Target EZ Label'] = full_mapping_df['Target Atom Idx'].apply(
-        lambda idx: get_bond_info(idx, target_mol, z_targ_set, e_targ_set))
+        lambda idx: get_bond_label(idx, target_mol, z_targ_set, e_targ_set))
     return full_mapping_df
 
-def target_module_dh(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
+def alkene_mapped_modules(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
     """
     Map double bond atom indices to module numbers
     """
     z_targets = []
-    for idx1, idx2 in z_bonds:
+    for (idx1, idx2) in z_bonds:
         mod1 = full_mapping_df.loc[full_mapping_df['Target Atom Idx'] == idx1, 'Module'].values
         mod2 = full_mapping_df.loc[full_mapping_df['Target Atom Idx'] == idx2, 'Module'].values
         z_targets.append((mod1[0], mod2[0]))
@@ -76,7 +67,7 @@ def target_module_dh(full_mapping_df: pd.DataFrame, z_bonds, e_bonds):
         e_targets.append((mod1[0], mod2[0]))
     return z_targets, e_targets
 
-def get_target_module_dh(double_bond: tuple):
+def pick_higher_module_dh(double_bond: tuple):
     """
     The target module is module Mi+1
     """
@@ -92,14 +83,14 @@ def get_target_module_dh(double_bond: tuple):
         modj = modj.lstrip('M')
     return int(modi) if int(modi) > int(modj) else int(modj)
 
-def get_target_dh_modules(full_mapping_df: pd.DataFrame, target_mol: Chem.Mol):
+def identify_target_dh_modules(full_mapping_df: pd.DataFrame, target_mol: Chem.Mol):
     """
     Identify target modules associated with Z and E double bonds
     """
-    z_bonds, e_bonds = extract_ez_atoms(target_mol)
-    z_target_mods, e_target_mods = target_module_dh(full_mapping_df, z_bonds, e_bonds)
-    z_mod_num = [get_target_module_dh(db) for db in z_target_mods]
-    e_mod_num = [get_target_module_dh(db) for db in e_target_mods]
+    z_set, e_set, z_bonds, e_bonds = extract_ez_atoms(target_mol)
+    z_target_mods, e_target_mods = alkene_mapped_modules(full_mapping_df, z_bonds, e_bonds)
+    z_mod_num = [pick_higher_module_dh(db) for db in z_target_mods]
+    e_mod_num = [pick_higher_module_dh(db) for db in e_target_mods]
     return z_mod_num, e_mod_num
 
 def z_kr_dh_combo(target_z_module: list):
@@ -165,7 +156,7 @@ def apply_dh_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, target_mol
     """
     Make KR-DH subtype swaps to correct alkene stereochemistry
     """
-    z_mod_num, e_mod_num = get_target_dh_modules(full_mapping_df, target_mol)
+    z_mod_num, e_mod_num = identify_target_dh_modules(full_mapping_df, target_mol)
     check_substrate_ez_compatibility(pks_features, z_mod_num)
     dh_swapped_pks_features = correct_ez_stereo(pks_features, z_mod_num, e_mod_num)
     return dh_swapped_pks_features
