@@ -1,6 +1,5 @@
 """
 Module for processing PKS products before stereo correction.
-@author: Kenna Roberts
 """
 # pylint: disable=no-member
 from collections import namedtuple
@@ -21,7 +20,7 @@ def canonicalize_smiles(molecule_str: str, stereo: str) -> str:
         stereo (str): The type of stereochemistry to specify
 
     Returns:
-        str: The canonicalized SMILES string.
+        str: The canonicalized SMILES string
     """
     mol = Chem.MolFromSmiles(molecule_str)
     if stereo == 'R/S':
@@ -44,7 +43,7 @@ def initial_pks(target: str) -> tuple[list, Chem.Mol]:
         target (str): The SMILES string of the target molecule
 
     Returns:
-        pks_design (list): Initial RetroTide design
+        pks_design: Initial RetroTide proposed PKS design
         mol (Chem.Mol): The computed product of the PKS design
     """
     designs = designPKS(Chem.MolFromSmiles(target),
@@ -58,9 +57,9 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
     """
     Determines the size of the largest ring in the target molecule.
     """
-    # Check ester pattern in target
-    ester_oxygen_pattern = '[C:1](=[O:2])[O:3][C:4]'
-    pattern_mol = Chem.MolFromSmarts(ester_oxygen_pattern)
+    # Use ester pattern to check for lactone rings
+    ester_pattern = '[C:1](=[O:2])[O:3][C:4]'
+    pattern_mol = Chem.MolFromSmarts(ester_pattern)
     matches = target_mol.GetSubstructMatches(pattern_mol)
     ring_info = target_mol.GetRingInfo()
     target_sizes = []
@@ -71,7 +70,9 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
             target_sizes.append((len(ring) - 1))
         else:
             target_sizes.append(int(0))
-    return max(target_sizes)
+    if target_sizes:
+        return max(target_sizes)
+    return 0
 
 def offload_pks_product(pks_product: Chem.Mol,
                         target_mol: Chem.Mol,
@@ -99,6 +100,7 @@ def offload_pks_product(pks_product: Chem.Mol,
             print("Warning: No products generated from thiolysis reaction.")
             return (pks_product,)
         
+        # Manually create terminal acid group
         editable_mol = Chem.EditableMol(pks_product)
         editable_mol.RemoveBond(c_idx, s_idx)
         editable_mol.RemoveAtom(s_idx)
@@ -127,6 +129,7 @@ def offload_pks_product(pks_product: Chem.Mol,
                 path = Chem.GetShortestPath(pks_product, carbonyl_carbon, oxygen_idx)
                 distance = len(path) - 1
                 if distance == target_size:
+                    # Manually create a lactone
                     editable_mol = Chem.EditableMol(pks_product)
                     sulfur_idx = None
                     for atom in pks_product.GetAtoms():
@@ -165,16 +168,16 @@ def module_mapping(pks_design: list) -> Chem.Mol:
 
 def matching_target_atoms(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> tuple[tuple, Chem.Mol]:
     """
-    Notes atom indices of the maximum common substructure between the unbound PKS product
-    and the target molecule
+    Identifies which part of the target is replicated in the unbound PKS product
+    using a maximum common substructure search.
 
     Args:
         unbound_mol (Chem.Mol): The unbound PKS product
         target_mol (Chem.Mol): The target molecule
     
     Returns:
-        mol2_match (tuple): Atom indices in the target molecule that match the MCS
-        mol2_copy (Chem.Mol): Copy of the target molecule with MCS highlighted
+        mol2_match (tuple): The atoms in the target replicated in the PKS product
+        target_mol (Chem.Mol): The target molecule
     """
     mcs_no_chiral = rdFMCS.FindMCS(
         [unbound_mol, target_mol], 
@@ -190,50 +193,48 @@ def matching_target_atoms(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> tuple[
         mol2_match = tuple()
     return mol2_match, target_mol
 
-def extract_target_substructure(target_mol: Chem.Mol, selected_atoms: list) -> Chem.Mol:
+def extract_target_substructure(target_mol: Chem.Mol, replicated_atoms: list) -> Chem.Mol:
     """
-    Remove unselected atoms and bonds from a molecule while preserving the original atom indices.
+    Remove any atoms and bonds in the target not replicated in the PKS product
+    while preserving the original atom indices.
 
     Args:
         target_mol (Chem.Mol): The target molecule
-        selected_atoms (list): List of atom indices in the matching substructure
+        replicated_atoms (list): List of atom indices in the matching substructure
     
     Returns:
         result_mol (Chem.Mol): The PKS replicated substructure of the target molecule
     """
     mol_copy = Chem.Mol(target_mol)
-    # Store original atom indices
+    # Preserve target atom mapping
     for atom in mol_copy.GetAtoms():
         atom.SetIntProp("original_idx", atom.GetIdx())
     editable_mol = Chem.EditableMol(mol_copy)
-    selected_set = set(selected_atoms)
-    # Remove bonds between selected and unselected atoms
+    selected_set = set(replicated_atoms)
+    # Remove bonds between replicated and non-replicated atoms
     bonds_to_remove = []
     for bond in target_mol.GetBonds():
         begin_idx = bond.GetBeginAtomIdx()
         end_idx = bond.GetEndAtomIdx()
-        # If one atom is selected and other is not
         if (begin_idx in selected_set) != (end_idx in selected_set):
             bonds_to_remove.append((begin_idx, end_idx))
-    # Remove bonds to unselected atoms
     for begin_idx, end_idx in bonds_to_remove:
         editable_mol.RemoveBond(begin_idx, end_idx)
-    # Remove unselected atoms
     all_atoms = set(range(target_mol.GetNumAtoms()))
     atoms_to_remove = sorted(all_atoms - selected_set, reverse=True)
     for atom_idx in atoms_to_remove:
         editable_mol.RemoveAtom(atom_idx)
-    result_mol = editable_mol.GetMol()
+    substructure_mol = editable_mol.GetMol()
     try:
-        Chem.SanitizeMol(result_mol,
+        Chem.SanitizeMol(substructure_mol,
                          sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
     except Exception:
         try:
-            Chem.SanitizeMol(result_mol,
+            Chem.SanitizeMol(substructure_mol,
                              sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
         except Exception:
             pass
-    return result_mol
+    return substructure_mol
 
 def map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd.DataFrame:
     """"
@@ -274,13 +275,14 @@ def map_product_to_target(unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> pd.Dat
 
 def map_product_to_pks_modules(unbound_mol: Chem.Mol) -> pd.DataFrame:
     """
-    Stores module mapping in a dataframe by extracting atom labels for the offloaded PKS product
+    Store module mapping in a dataframe by extracting atom labels from the
+    unbound PKS product
 
     Args:
         unbound_mol (Chem.Mol): The unbound PKS product
 
     Returns:
-        atommapped_pks_df (pd.DataFrame): DataFrame containing atom type, product atom index,
+        atommapped_pks_df (pd.DataFrame): Includes atom type, product atom index,
         and module index
     """
     atommapped_pks_df = pd.DataFrame(columns=['Atom Type', 'Product Atom Idx', 'Module'])
@@ -298,7 +300,7 @@ def map_product_to_pks_modules(unbound_mol: Chem.Mol) -> pd.DataFrame:
     return atommapped_pks_df
 
 def full_mapping(mcs_map: pd.DataFrame, module_map: pd.DataFrame) -> pd.DataFrame:
-    """ Combines MCS mapping and module mapping into a single DataFrame."""
+    """ Merge MCS mapping and module mapping into a single DataFrame."""
     fully_mapped_molecule_df = pd.merge(
         mcs_map, module_map, on=['Atom Type', 'Product Atom Idx']).dropna()
     return fully_mapped_molecule_df
@@ -322,12 +324,9 @@ def check_chiral_centers(pks_product: Chem.Mol,
     mismatching_atoms_1 = []
     mismatching_atoms_2 = []
     if len(mapped_atoms) > 0:
-        # Extract atom indices from DataFrame
         mol1_match = mapped_atoms['Product Atom Idx'].astype(int).tolist()
         mol2_match = mapped_atoms['Target Atom Idx'].astype(int).tolist()
-        # Compare chirality of mapped atoms
         for atom1_idx, atom2_idx in zip(mol1_match, mol2_match):
-            # Check if both atoms are chiral
             if atom1_idx in chiral_centers_1 and atom2_idx in chiral_centers_2:
                 chirality_1 = chiral_centers_1[atom1_idx]
                 chirality_2 = chiral_centers_2[atom2_idx]
@@ -358,14 +357,14 @@ def add_atom_labels(mol: Chem.Mol, chiral_centers: dict) -> Chem.Mol:
     """
     for atom in mol.GetAtoms():
         atom_idx = atom.GetIdx()
-        base_label = f"{atom.GetSymbol()}:{atom_idx}"
-        # Add R/S label if it's a chiral center
+        atom_label = f"{atom.GetSymbol()}:{atom_idx}"
+        # Add CIP labels
         if atom_idx in chiral_centers:
             chirality = chiral_centers[atom_idx]
-            label = f"{base_label} ({chirality})"
+            chiral_label = f"{atom_label} ({chirality})"
         else:
-            label = base_label
-        atom.SetProp("atomNote", label)
+            chiral_label = atom_label
+        atom.SetProp("atomNote", chiral_label)
     return mol
 
 def check_mcs(unbound_product, target_mol):
@@ -378,7 +377,6 @@ def check_mcs(unbound_product, target_mol):
         print("Extracting common substructure from target to assess chiral centers from")
         mol2_match, mol2_copy = matching_target_atoms(unbound_product, target_mol)
         mol2_submol = extract_target_substructure(mol2_copy, list(mol2_match))
-
         mcs_mapped_atoms_df = map_product_to_target(unbound_product, mol2_submol)
         return mol2_submol, mcs_mapped_atoms_df
     mcs_mapped_atoms_df = map_product_to_target(unbound_product, target_mol)
