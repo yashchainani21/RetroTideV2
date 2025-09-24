@@ -10,13 +10,13 @@ import bcs
 from retrotide import structureDB
 
 @dataclass
-class PatternFlags:
+class ChiralFlags:
     """
-    Data class to hold flags for different substituent patterns
+    Data class to hold flags for chiral center mismatches
+    for each pair
     """
-    is_alpha: bool = False
-    is_hydroxyl: bool = False
-    is_ester: bool = False
+    alpha_cc: bool = False
+    beta_cc: bool = False
 
 def get_bcs_info(pks_design: list)-> dict:
     """
@@ -36,6 +36,7 @@ def get_bcs_info(pks_design: list)-> dict:
         'KR Type': [],
         'DH Type' : [],
         'ER Type' : [],
+        'KR' : [],
         'DH' : [],
         'ER' : []
     }
@@ -46,6 +47,7 @@ def get_bcs_info(pks_design: list)-> dict:
         if bcs.KR in module.domains:
             kr_type = module.domains[bcs.KR].type
             pks_features['KR Type'].append(kr_type)
+            pks_features['KR'].append(True)
             if bcs.DH in module.domains:
                 dh_type = module.domains[bcs.DH].type
                 pks_features['DH Type'].append(dh_type)
@@ -66,6 +68,7 @@ def get_bcs_info(pks_design: list)-> dict:
             pks_features['ER Type'].append(None)
             pks_features['DH'].append(False)
             pks_features['ER'].append(False)
+            pks_features['KR'].append(False)
     return pks_features
 
 def extract_pairs(mol: Chem.Mol, fully_mapped_df: pd.DataFrame) -> list:
@@ -83,8 +86,6 @@ def extract_pairs(mol: Chem.Mol, fully_mapped_df: pd.DataFrame) -> list:
     # Find pairs of backbone carbons from different modules
     backbone_pairs = []
     for c_idx in c_atoms:
-        if c_idx not in atom_to_module:
-            continue
         carbon_atom = mol.GetAtomWithIdx(c_idx)
         carbon_module = atom_to_module[c_idx]
         # Assess which carbons make up the backbone
@@ -114,13 +115,13 @@ def get_module_number(module_name: str) -> int:
         module_number = module_name.lstrip('M')
     return int(module_number)
 
-def filter_pairs(adjacent_pairs: list) -> list:
+def filter_pairs(backbone_pairs: list) -> list:
     """
     Uses the module order to extract pairs of adjacent carbon atoms that are from
     sequential PKS modules
     """
     sequential_pairs = []    
-    for (atom1_idx, module1), (atom2_idx, module2) in adjacent_pairs:
+    for (atom1_idx, module1), (atom2_idx, module2) in backbone_pairs:
         modi = get_module_number(module1)
         modj = get_module_number(module2)
         # Check if modules are sequential and order like (Mi, Mi+1)
@@ -132,7 +133,7 @@ def filter_pairs(adjacent_pairs: list) -> list:
     sequential_pairs.sort(key=lambda x: get_module_number(x[1]))
     return sequential_pairs
 
-def identify_pairs_with_mismatches(backbone_pairs: list, mmatch1: list) -> list:
+def identify_pairs_with_mismatches(sequential_pairs: list, mmatch1: list) -> list:
     """
     Cross references each pair with the list of mismatched chiral centers
 
@@ -144,12 +145,12 @@ def identify_pairs_with_mismatches(backbone_pairs: list, mmatch1: list) -> list:
         mismatch_pairs (list): List of pairs that have at least one chiral mismatch
     """
     mismatch_pairs = []
-    for atom1_idx, module1, atom2_idx, module2 in backbone_pairs:
+    for atom1_idx, module1, atom2_idx, module2 in sequential_pairs:
         if atom1_idx in mmatch1 or atom2_idx in mmatch1:
             mismatch_pairs.append((atom1_idx, module1, atom2_idx, module2))
     return mismatch_pairs
 
-def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
+def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int) -> dict:
     """
     Check if a carbon is alpha to a carbonyl, hydroxyl, ether,
     or ester group
@@ -175,7 +176,7 @@ def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
                 results['atom2'].append('alpha_substituted')
     return results
 
-def check_hydroxyl_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
+def check_hydroxyl_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int) -> dict:
     """
     Check if a carbon is hydroxyl substituted
     """
@@ -191,7 +192,7 @@ def check_hydroxyl_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
             results['atom2'].append('hydroxyl_substituted')
     return results
 
-def check_ester_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
+def check_ester_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int) -> dict:
     """
     Check if a carbon is ester substituted
     """
@@ -212,7 +213,7 @@ def check_substituent_patterns(mol: Chem.Mol, mismatch_pairs: list) -> list:
     Check substituent patterns for each pair including one
     or more mismatched chiral centers
     """
-    results = []
+    pattern_results = []
     for atom1_idx, module1, atom2_idx, module2 in mismatch_pairs:
         pair_info = {
             'atom1_idx': atom1_idx,
@@ -237,73 +238,32 @@ def check_substituent_patterns(mol: Chem.Mol, mismatch_pairs: list) -> list:
         pair_info['atom1_patterns'].extend(ester_results['atom1'])
         pair_info['atom2_patterns'].extend(ester_results['atom2'])
 
-        results.append(pair_info)
-    return results
-
-def identify_target_module(mismatched_module: str, is_hydroxyl: bool, is_ester: bool) -> int:
-    """
-    Identify which module to perform a KR swap on
-    Target Module is Mi+1
-    """
-    if mismatched_module == 'LM':
-        target_module =  1
-    else:
-        target_module = int(mismatched_module.lstrip('M'))
-        if is_hydroxyl or is_ester:
-            target_module += 1
-    return target_module
-
-def identify_atoms_to_process(results: list, mmatch1: list) -> list:
-    """
-    Identify which atoms correspond to modules needing a KR swap
-    """
-    atoms_to_process = []
-    for pair in results:
-        atom1_idx = pair['atom1_idx']
-        module1 = pair['module1']
-        atom2_idx = pair['atom2_idx']
-        module2 = pair['module2']
-        
-        if atom1_idx in mmatch1:
-            atoms_to_process.append({
-                'atom': atom1_idx,
-                'module': module1,
-                'patterns': pair['atom1_patterns'],
-            })
-        if atom2_idx in mmatch1:
-            atoms_to_process.append({
-                'atom': atom2_idx,
-                'module': module2,
-                'patterns': pair['atom2_patterns'],
-            })
-    return atoms_to_process
+        pattern_results.append(pair_info)
+    return pattern_results
 
 def kr_type_logic(pks_features: dict, target_module_number: int,
-                           old_kr_type: str, flags: PatternFlags):
+                  old_kr_type: str, flags: ChiralFlags) -> str:
     """
     Apply logic for identifying the correct KR type
     """
     substrate = pks_features['Substrate'][target_module_number]
     new_kr_type = None
-    # Simple case: Malonyl-CoA with no DH
+    # Simple cases
     if (substrate == "Malonyl-CoA" and 
-        pks_features['DH'][target_module_number] is False):
+        pks_features['ER'][target_module_number] is False):
         if old_kr_type == 'A':
             new_kr_type = 'B'
         else:
             new_kr_type = 'A'
     elif (substrate == "Malonyl-CoA" and 
-        pks_features['DH'][target_module_number] is True):
-        if old_kr_type == 'A':
-            new_kr_type = 'B'
-        else:
-            new_kr_type = 'A'
+        pks_features['ER'][target_module_number] is True):
+        new_kr_type = 'B'
     elif (substrate != "Malonyl-CoA" and 
         pks_features['DH'][target_module_number] is True):
         new_kr_type = 'B1'
     # Complex cases
     elif old_kr_type is None:
-        if flags.is_alpha:
+        if flags.alpha_cc:
             new_kr_type = 'C2'
             print("    Case 1: Adding KR type C2 to perform epimerization of alpha chiral center")
         else:
@@ -312,16 +272,16 @@ def kr_type_logic(pks_features: dict, target_module_number: int,
         # Parse existing KR type (e.g., 'A1' -> letter='A', number='1')
         letter = old_kr_type[0]
         number = old_kr_type[1:] if len(old_kr_type) >= 2 else '1'
-        if flags.is_alpha and (flags.is_hydroxyl or flags.is_ester):
+        if flags.alpha_cc and flags.beta_cc:
             new_letter = 'B' if letter == 'A' else 'A'
             new_number = '2' if number == '1' else '1'
             new_kr_type = new_letter + new_number
             print("    Case 2: Both wrong - swapping both letter and number")
-        elif flags.is_alpha and not (flags.is_hydroxyl or flags.is_ester):
+        elif flags.alpha_cc and not flags.beta_cc:
             new_number = '2' if number == '1' else '1'
             new_kr_type = letter + new_number
             print("    Case 3: Alpha wrong, Beta right - swapping number only")
-        elif not flags.is_alpha and (flags.is_hydroxyl or flags.is_ester):
+        elif not flags.alpha_cc and flags.beta_cc:
             new_letter = 'B' if letter == 'A' else 'A'
             new_kr_type = new_letter + number
             print("    Case 4: Alpha right, Beta wrong - swapping letter only")
@@ -330,38 +290,52 @@ def kr_type_logic(pks_features: dict, target_module_number: int,
             print("    No patterns matched - returning original KR type")
     return new_kr_type
 
-def identify_new_kr_type(atom_info: dict, pks_features: dict):
+def identify_new_kr_type(pair_info: dict, mmatch1: list, pks_features: dict):
     """
     Assess if the mismatched chiral center is alpha or beta
     Select the correct KR swap to make accordingly
     """
-    mismatched_atom = atom_info['atom']
-    mismatched_module = atom_info['module']
-    mismatched_patterns = atom_info['patterns']
-    is_alpha = 'alpha_substituted' in mismatched_patterns
-    is_hydroxyl = 'hydroxyl_substituted' in mismatched_patterns
-    is_ester = 'ester_substituted' in mismatched_patterns
-    target_module_number = identify_target_module(mismatched_module, is_hydroxyl, is_ester)
+    atom1_idx = pair_info['atom1_idx']
+    atom2_idx = pair_info['atom2_idx']
+    module1 = get_module_number(pair_info['module1'])
+    module2 = get_module_number(pair_info['module2'])
+    patterns1 = pair_info['atom1_patterns']
+    patterns2 = pair_info['atom2_patterns']
+
+    if atom1_idx in mmatch1 and atom2_idx in mmatch1:
+        alpha_cc = True
+        beta_cc = True
+    elif atom1_idx in mmatch1:
+        alpha_cc = 'alpha_substituted' in patterns1
+        beta_cc = ('hydroxyl_substituted' in patterns1) or \
+                   ('ester_substituted' in patterns1)
+    elif atom2_idx in mmatch1:
+        alpha_cc = 'alpha_substituted' in patterns2
+        beta_cc = ('hydroxyl_substituted' in patterns2) or \
+                   ('ester_substituted' in patterns2)
+    else:
+        raise ValueError("Mismatched pairs were not assessed correctly")
+
+    target_module_number = module1 if module1 > module2 else module2
     old_kr_type = pks_features['KR Type'][target_module_number]
-    print(f"----Analyzing mismatch from {mismatched_module}-----")
-    print(f"    Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl or is_ester}")
+    print(f"----Analyzing mismatch(s) in pair ({atom1_idx}, {atom2_idx})-----")
+    print(f"    alpha={alpha_cc}, beta={beta_cc}")
     new_kr_type = kr_type_logic(pks_features, target_module_number,
                                          old_kr_type,
-                                         flags=PatternFlags(is_alpha=is_alpha,
-                                                            is_hydroxyl=is_hydroxyl,
-                                                            is_ester=is_ester))
+                                         flags=ChiralFlags(alpha_cc=alpha_cc,
+                                                           beta_cc=beta_cc
+                                                           ))
     if new_kr_type != old_kr_type:
         pks_features['KR Type'][target_module_number] = new_kr_type
         print(f"    Making KR swap in module {target_module_number}")
         print(f"    M{target_module_number}: Swapped KR type from {old_kr_type} to {new_kr_type}")
 
-def kr_swaps(pks_features: dict, results: list, mmatch1: list) -> dict:
+def kr_swaps(pks_features: dict, mmatch1: list, pattern_results: list) -> dict:
     """
     Update KR types based on chiral mismatches and their structural patterns
     """
-    atoms = identify_atoms_to_process(results, mmatch1)
-    for atom_info in atoms:
-        identify_new_kr_type(atom_info, pks_features)
+    for pair_info in pattern_results:
+        identify_new_kr_type(pair_info, mmatch1, pks_features)
     return pks_features
 
 def new_design(pks_features:dict) -> Chem.Mol:
@@ -395,7 +369,8 @@ def new_design(pks_features:dict) -> Chem.Mol:
     pks_product = cluster_f.computeProduct(structureDB)
     return pks_product, modules
 
-def apply_kr_swaps(unbound_product, full_mapping_df, mmatch1, pks_features):
+def apply_kr_swaps(unbound_product: Chem.Mol, full_mapping_df: pd.DataFrame,
+                   mmatch1: list, pks_features: dict) -> dict:
     """
     Parse pairs of backbone carbons mapped to sequential modules and
     apply KR swaps
@@ -404,10 +379,11 @@ def apply_kr_swaps(unbound_product, full_mapping_df, mmatch1, pks_features):
     sequential_pairs = filter_pairs(pairs)
     pairs_with_mismatches = identify_pairs_with_mismatches(sequential_pairs, mmatch1)
     pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
-    pks_features_updated = kr_swaps(pks_features, pattern_results, mmatch1)
+    pks_features_updated = kr_swaps(pks_features, mmatch1, pattern_results)
     return pks_features_updated
 
-def apply_er_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, mmatch1_f: list, unbound_product: Chem.Mol) -> dict:
+def apply_er_swaps(unbound_product: Chem.Mol, full_mapping_df: pd.DataFrame,
+                   mmatch1_f: list, pks_features: dict) -> dict:
     """
     If remaining alpha substituted chiral mismatches and an ER domain is present,
     swap the ER type
@@ -416,13 +392,19 @@ def apply_er_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, mmatch1_f:
     sequential_pairs = filter_pairs(pairs)
     pairs_with_mismatches = identify_pairs_with_mismatches(sequential_pairs, mmatch1_f)
     pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
-    atoms = identify_atoms_to_process(pattern_results, mmatch1_f)
-    for atom_info in atoms:
-        mismatched_module = atom_info['module']
-        mismatched_patterns = atom_info['patterns']
-        is_alpha = 'alpha_substituted' in mismatched_patterns
-        if is_alpha:
-            target_module_number = identify_target_module(mismatched_module, False, False)
+    for pair_info in pattern_results:
+        atom1_idx = pair_info['atom1_idx']
+        atom2_idx = pair_info['atom2_idx']
+        module1 = get_module_number(pair_info['module1'])
+        module2 = get_module_number(pair_info['module2'])
+        patterns1 = pair_info['atom1_patterns']
+        patterns2 = pair_info['atom2_patterns']
+        alpha_cc = 'alpha_substituted' in patterns1 or 'alpha_substituted' in patterns2
+
+        target_module_number = module1 if module1 > module2 else module2
+        if alpha_cc:
+            print(f"----Analyzing mismatch in pair ({atom1_idx}, {atom2_idx})-----")
+            print(f"    alpha={alpha_cc}")
             if pks_features['ER'][target_module_number]:
                 old_er_type = pks_features['ER Type'][target_module_number]
                 new_er_type = 'D' if old_er_type == 'L' else 'L'
@@ -433,9 +415,10 @@ def apply_er_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, mmatch1_f:
                 print(f"    No ER domain in module {target_module_number} - cannot swap ER type")
     return pks_features
 
-def check_swaps_accuracy(match, mmatch):
+def check_swaps_accuracy(match: list, mmatch: list) -> float:
     """
     Assess stereochemistry correspondence post implementing KR Swaps
+    and ER Swaps
     """
     if (len(match) + len(mmatch)) > 0:
         swaps_score = len(match)/(len(match)+len(mmatch))
