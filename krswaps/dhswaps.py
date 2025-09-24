@@ -136,8 +136,8 @@ def correct_ez_stereo(pks_features: dict, z_mod_num: list, e_mod_num: list) -> d
                 if new_kr_type != old_kr_type:
                     pks_features['KR Type'][mod_z] = new_kr_type
                     pks_features['DH Type'][mod_z] = new_dh_type
-                    print(f"------Updating M{mod_z}------")
-                    print(f"Swapped KR-DH types to types {new_kr_type}-{new_dh_type}")
+                    print(f"    Making KR-DH swap in module {mod_z}")
+                    print(f"    M{mod_z}: Swapped KR-DH types to types {new_kr_type}-{new_dh_type}")
     for mod_e in e_mod_num:
         substrate = pks_features['Substrate'][mod_e]
         old_kr_type = pks_features['KR Type'][mod_e]
@@ -148,8 +148,8 @@ def correct_ez_stereo(pks_features: dict, z_mod_num: list, e_mod_num: list) -> d
                 if new_kr_type != old_kr_type:
                     pks_features['KR Type'][mod_e] = new_kr_type
                     pks_features['DH Type'][mod_e] = new_dh_type
-                    print(f"------Updating M{mod_e}------")
-                    print(f"Swapped KR-DH types to types {new_kr_type}-{new_dh_type}")
+                    print(f"    Making KR-DH swap in module {mod_e}")
+                    print(f"    M{mod_e}: Swapped KR-DH types to types {new_kr_type}-{new_dh_type}")
     return pks_features
 
 def apply_dh_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, target_mol: Chem.Mol) -> dict:
