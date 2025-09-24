@@ -157,12 +157,15 @@ def main(molecule: str):
 
     # Implement KR swaps
     print("Correcting R/S Stereochemistry")
-    pks_features_kr_swapped = krswaps.apply_kr_swaps(unbound_product, full_mapping_df,
-                                                  chiral_result.mmatch1, pks_features)
+    pks_features_kr_swapped = krswaps.apply_kr_swaps(unbound_product,
+                                                     full_mapping_df,
+                                                     chiral_result.mmatch1,
+                                                     pks_features)
     
     # Implement DH swaps
     print("Correcting E/Z Stereochemistry")
-    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_kr_swapped, full_mapping_df,
+    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_kr_swapped,
+                                                     full_mapping_df,
                                                      target_mol)
     
     # Assess stereochemistry correspondence after KR and DH swaps
@@ -174,10 +177,10 @@ def main(molecule: str):
     # Resolve remaining R/S mismatches using ER swaps
     if len(chiral_result_f.mmatch1) != 0:
         print("Correcting any remaining R/S Mismatches")
-        pks_features_er_swapped = krswaps.apply_er_swaps(pks_features_dh_swapped,
+        pks_features_er_swapped = krswaps.apply_er_swaps(unbound_product,
                                                          full_mapping_df,
                                                          chiral_result_f.mmatch1,
-                                                         unbound_product)
+                                                         pks_features_dh_swapped)
         chiral_result_f, alkene_result_f, final_prod, final_design = postprocessing(pks_features_er_swapped,
                                                                pks_design,
                                                                target_mol,
