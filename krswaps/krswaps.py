@@ -110,11 +110,9 @@ def get_module_number(module_name: str) -> int:
     """
     if module_name == 'LM':
         module_number = 0
-    elif module_name.startswith('M'):
-        module_number = int(module_name[1:])
     else:
-        raise ValueError(f"Unknown module format: {module_name}")
-    return module_number
+        module_number = module_name.lstrip('M')
+    return int(module_number)
 
 def filter_pairs(adjacent_pairs: list) -> list:
     """
@@ -123,13 +121,11 @@ def filter_pairs(adjacent_pairs: list) -> list:
     """
     sequential_pairs = []    
     for (atom1_idx, module1), (atom2_idx, module2) in adjacent_pairs:
-        order1 = get_module_number(module1)
-        order2 = get_module_number(module2)
-
-        # Check if modules are sequential
-        if abs(order1 - order2) == 1:
-            # Order (Mi, Mi+1)
-            if order1 < order2:
+        modi = get_module_number(module1)
+        modj = get_module_number(module2)
+        # Check if modules are sequential and order like (Mi, Mi+1)
+        if abs(modi - modj) == 1:
+            if modi < modj:
                 sequential_pairs.append((atom1_idx, module1, atom2_idx, module2))
             else:
                 sequential_pairs.append((atom2_idx, module2, atom1_idx, module1))
@@ -168,8 +164,8 @@ def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
         '[C:1]([CH2:2])[CH2:3]'
     ]
     results = {'atom1' : [], 'atom2': []}
-    for smarts in alpha_carbon_patterns:
-        pattern_mol = Chem.MolFromSmarts(smarts)
+    for pattern in alpha_carbon_patterns:
+        pattern_mol = Chem.MolFromSmarts(pattern)
         matches = mol.GetSubstructMatches(pattern_mol)
         for match in matches:
             alpha_carbon_idx = match[0]
@@ -251,8 +247,8 @@ def identify_target_module(mismatched_module: str, is_hydroxyl: bool, is_ester: 
     """
     if mismatched_module == 'LM':
         target_module =  1
-    if mismatched_module.startswith('M'):
-        target_module = int(mismatched_module[1:])
+    else:
+        target_module = int(mismatched_module.lstrip('M'))
         if is_hydroxyl or is_ester:
             target_module += 1
     return target_module
@@ -309,9 +305,9 @@ def kr_type_logic(pks_features: dict, target_module_number: int,
     elif old_kr_type is None:
         if flags.is_alpha:
             new_kr_type = 'C2'
-            print("  Case 1: Adding KR type C2 to perform epimerization of alpha chiral center")
+            print("    Case 1: Adding KR type C2 to perform epimerization of alpha chiral center")
         else:
-            print("  No KR domain and not alpha carbon - cannot fix by KR swap")
+            print("    No KR domain and not alpha carbon - cannot fix by KR swap")
     else:
         # Parse existing KR type (e.g., 'A1' -> letter='A', number='1')
         letter = old_kr_type[0]
@@ -320,18 +316,18 @@ def kr_type_logic(pks_features: dict, target_module_number: int,
             new_letter = 'B' if letter == 'A' else 'A'
             new_number = '2' if number == '1' else '1'
             new_kr_type = new_letter + new_number
-            print("  Case 2: Both patterns wrong - swapping both letter and number")
+            print("    Case 2: Both wrong - swapping both letter and number")
         elif flags.is_alpha and not (flags.is_hydroxyl or flags.is_ester):
             new_number = '2' if number == '1' else '1'
             new_kr_type = letter + new_number
-            print("  Case 3: Alpha wrong, Beta right - swapping number only")
+            print("    Case 3: Alpha wrong, Beta right - swapping number only")
         elif not flags.is_alpha and (flags.is_hydroxyl or flags.is_ester):
             new_letter = 'B' if letter == 'A' else 'A'
             new_kr_type = new_letter + number
-            print("  Case 4: Alpha right, Beta wrong - swapping letter only")
+            print("    Case 4: Alpha right, Beta wrong - swapping letter only")
         else:
             new_kr_type = old_kr_type
-            print("  No patterns matched - returning original KR type")
+            print("    No patterns matched - returning original KR type")
     return new_kr_type
 
 def identify_new_kr_type(atom_info: dict, pks_features: dict):
@@ -347,9 +343,8 @@ def identify_new_kr_type(atom_info: dict, pks_features: dict):
     is_ester = 'ester_substituted' in mismatched_patterns
     target_module_number = identify_target_module(mismatched_module, is_hydroxyl, is_ester)
     old_kr_type = pks_features['KR Type'][target_module_number]
-    print(f"------Analyzing mismatch from {mismatched_module}-------")
-    print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl or is_ester}")
-    print(f"  Will modify KR type in module {target_module_number}")
+    print(f"----Analyzing mismatch from {mismatched_module}-----")
+    print(f"    Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl or is_ester}")
     new_kr_type = kr_type_logic(pks_features, target_module_number,
                                          old_kr_type,
                                          flags=PatternFlags(is_alpha=is_alpha,
@@ -357,8 +352,8 @@ def identify_new_kr_type(atom_info: dict, pks_features: dict):
                                                             is_ester=is_ester))
     if new_kr_type != old_kr_type:
         pks_features['KR Type'][target_module_number] = new_kr_type
-        print(f"------Updating M{target_module_number}------")
-        print(f"Swapped KR type from {old_kr_type} to {new_kr_type}")
+        print(f"    Making KR swap in module {target_module_number}")
+        print(f"    M{target_module_number}: Swapped KR type from {old_kr_type} to {new_kr_type}")
 
 def kr_swaps(pks_features: dict, results: list, mmatch1: list) -> dict:
     """
@@ -432,10 +427,10 @@ def apply_er_swaps(pks_features: dict, full_mapping_df: pd.DataFrame, mmatch1_f:
                 old_er_type = pks_features['ER Type'][target_module_number]
                 new_er_type = 'D' if old_er_type == 'L' else 'L'
                 pks_features['ER Type'][target_module_number] = new_er_type
-                print(f"------Updating M{target_module_number}------")
-                print(f"Swapped ER type from {old_er_type} to {new_er_type}")
+                print(f"    Making ER swap in module {target_module_number}")
+                print(f"    M{target_module_number}: Swapped ER type from {old_er_type} to {new_er_type}")
             else:
-                print(f"No ER domain in module {target_module_number} - cannot swap ER type")
+                print(f"    No ER domain in module {target_module_number} - cannot swap ER type")
     return pks_features
 
 def check_swaps_accuracy(match, mmatch):
