@@ -84,6 +84,9 @@ def compute_similarity(pks_prod: Chem.Mol, target_mol: Chem.Mol) -> float:
     """
     Compute the jaccard similarity between the PKS product and the user defined
     target molecule
+
+    Returns:
+        jaccard_score (float): Jaccard similarity score [0, 1]
     """
     fp_prod = fp.get_fingerprint(Chem.MolToSmiles(pks_prod), 'mapchiral')
     fp_target = fp.get_fingerprint(Chem.MolToSmiles(target_mol), 'mapchiral')
@@ -164,9 +167,9 @@ def main(molecule: str):
     
     # Implement DH swaps
     print("Correcting E/Z Stereochemistry")
-    pks_features_dh_swapped = dhswaps.apply_dh_swaps(pks_features_kr_swapped,
-                                                     full_mapping_df,
-                                                     target_mol)
+    pks_features_dh_swapped = dhswaps.apply_dh_swaps(target_mol,
+                                                     pks_features_kr_swapped,
+                                                     full_mapping_df)
     
     # Assess stereochemistry correspondence after KR and DH swaps
     chiral_result_f, alkene_result_f, final_prod, final_design = postprocessing(pks_features_dh_swapped,
