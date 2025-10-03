@@ -55,7 +55,7 @@ def initial_pks(target: str) -> tuple[list, Chem.Mol]:
 
 def target_ring_size(target_mol: Chem.Mol) -> int:
     """
-    Determines the size of the largest ring in the target molecule.
+    Determines the size of the largest lactone in the target molecule.
     """
     # Use ester pattern to check for lactone rings
     ester_pattern = '[C:1](=[O:2])[O:3][C:4]'
@@ -63,13 +63,12 @@ def target_ring_size(target_mol: Chem.Mol) -> int:
     matches = target_mol.GetSubstructMatches(pattern_mol)
     ring_info = target_mol.GetRingInfo()
     target_sizes = []
-    for ring in ring_info.AtomRings():
-        if not ring_info.AtomRings():
-            target_sizes.append(int(0))
-        if any(idx in ring for match in matches for idx in match):
-            target_sizes.append((len(ring) - 1))
-        else:
-            target_sizes.append(int(0))
+    if ring_info.AtomRings():
+        for ring in ring_info.AtomRings():
+            if any(idx in ring for match in matches for idx in match):
+                target_sizes.append((len(ring) - 1))
+            else:
+                target_sizes.append(int(0))
     if target_sizes:
         return max(target_sizes)
     return 0
