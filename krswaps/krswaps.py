@@ -86,6 +86,8 @@ def extract_pairs(mol: Chem.Mol, fully_mapped_df: pd.DataFrame) -> list:
     # Find pairs of backbone carbons from different modules
     backbone_pairs = []
     for c_idx in c_atoms:
+        if c_idx not in atom_to_module:
+            continue
         carbon_atom = mol.GetAtomWithIdx(c_idx)
         carbon_module = atom_to_module[c_idx]
         # Assess which carbons make up the backbone
