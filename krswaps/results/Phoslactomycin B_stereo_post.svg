@@ -46,7 +46,10 @@ width='1000px' height='400px' viewBox='0 0 1000 400'>
 <path class='bond-15 atom-13 atom-15' d='M 259.2,121.2 L 258.2,111.3 L 253.6,113.8 Z' style='fill:#FF0000;fill-rule:evenodd;fill-opacity:1;stroke:#FF0000;stroke-width:0.5px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;' />
 <path class='bond-15 atom-13 atom-15' d='M 259.2,121.2 L 261.4,120.0 L 258.2,111.3 Z' style='fill:#FF0000;fill-rule:evenodd;fill-opacity:1;stroke:#FF0000;stroke-width:0.5px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;' />
 <path class='bond-16 atom-14 atom-16' d='M 306.5,142.5 L 316.5,160.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
-<path class='bond-17 atom-14 atom-17' d='M 307.6,129.3 L 314.6,112.7 L 319.0,115.4 Z' style='fill:#000000;fill-rule:evenodd;fill-opacity:1;stroke:#000000;stroke-width:0.5px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;' />
+<path class='bond-17 atom-14 atom-17' d='M 309.9,126.6 L 308.8,125.9' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:1.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
+<path class='bond-17 atom-14 atom-17' d='M 312.3,123.9 L 310.1,122.6' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:1.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
+<path class='bond-17 atom-14 atom-17' d='M 314.7,121.2 L 311.4,119.2' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:1.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
+<path class='bond-17 atom-14 atom-17' d='M 317.1,118.5 L 312.7,115.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:1.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
 <path class='bond-18 atom-16 atom-18' d='M 324.8,164.3 L 347.8,164.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
 <path class='bond-18 atom-16 atom-18' d='M 324.7,169.5 L 347.7,170.0' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
 <path class='bond-19 atom-19 atom-17' d='M 349.0,107.5 L 326.1,107.0' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />
@@ -1899,118 +1902,110 @@ Q 287.7 149.0, 288.0 149.9
 Q 288.3 150.7, 288.3 151.7
 ' fill='#000000'/>
 <path class='note' d='M 283.3 121.6
-Q 283.3 120.4, 283.9 119.7
-Q 284.5 119.1, 285.5 119.1
-Q 286.6 119.1, 287.1 119.8
+Q 283.3 120.4, 283.8 119.7
+Q 284.4 119.1, 285.5 119.1
+Q 286.5 119.1, 287.0 119.8
 L 286.6 120.2
 Q 286.2 119.7, 285.5 119.7
 Q 284.8 119.7, 284.4 120.2
 Q 284.0 120.6, 284.0 121.6
 Q 284.0 122.6, 284.4 123.1
 Q 284.8 123.6, 285.6 123.6
-Q 286.2 123.6, 286.8 123.2
-L 287.0 123.7
+Q 286.1 123.6, 286.7 123.2
+L 286.9 123.7
 Q 286.7 123.9, 286.3 124.0
 Q 285.9 124.1, 285.5 124.1
-Q 284.5 124.1, 283.9 123.5
+Q 284.4 124.1, 283.8 123.5
 Q 283.3 122.8, 283.3 121.6
 ' fill='#000000'/>
-<path class='note' d='M 287.6 123.2
-L 288.3 123.2
-L 288.3 123.9
-L 287.6 123.9
-L 287.6 123.2
-M 287.6 120.9
-L 288.3 120.9
-L 288.3 121.5
-L 287.6 121.5
-L 287.6 120.9
+<path class='note' d='M 287.5 123.2
+L 288.2 123.2
+L 288.2 123.9
+L 287.5 123.9
+L 287.5 123.2
+M 287.5 120.9
+L 288.2 120.9
+L 288.2 121.5
+L 287.5 121.5
+L 287.5 120.9
 ' fill='#000000'/>
-<path class='note' d='M 289.3 123.5
-L 290.4 123.5
-L 290.4 119.8
-L 289.2 120.2
+<path class='note' d='M 289.2 123.5
+L 290.3 123.5
+L 290.3 119.8
+L 289.1 120.2
 L 289.0 119.8
 L 290.5 119.1
 L 291.0 119.2
 L 291.0 123.5
-L 292.0 123.5
-L 292.0 124.0
-L 289.3 124.0
-L 289.3 123.5
+L 291.9 123.5
+L 291.9 124.0
+L 289.2 124.0
+L 289.2 123.5
 ' fill='#000000'/>
-<path class='note' d='M 295.7 122.4
+<path class='note' d='M 295.6 122.4
 L 296.2 122.4
 L 296.2 122.9
-L 295.7 122.9
-L 295.7 124.0
+L 295.6 122.9
+L 295.6 124.0
 L 295.0 124.0
 L 295.0 122.9
-L 292.5 122.9
-L 292.5 122.5
+L 292.4 122.9
+L 292.4 122.5
 L 294.6 119.1
-L 295.7 119.1
-L 295.7 122.4
-M 293.3 122.4
+L 295.6 119.1
+L 295.6 122.4
+M 293.2 122.4
 L 295.0 122.4
 L 295.0 119.6
-L 293.3 122.4
+L 293.2 122.4
 ' fill='#000000'/>
 <path class='note' d='' fill='#000000'/>
 <path class='note' d='M 299.3 122.1
 Q 299.3 121.1, 299.6 120.3
-Q 299.9 119.5, 300.5 118.6
-L 300.9 118.8
-Q 300.4 119.6, 300.2 120.4
-Q 300.0 121.1, 300.0 122.1
-Q 300.0 123.0, 300.2 123.7
-Q 300.4 124.5, 300.9 125.3
-L 300.5 125.6
+Q 299.9 119.5, 300.4 118.6
+L 300.8 118.8
+Q 300.4 119.6, 300.1 120.4
+Q 299.9 121.1, 299.9 122.1
+Q 299.9 123.0, 300.1 123.7
+Q 300.4 124.5, 300.8 125.3
+L 300.4 125.6
 Q 299.9 124.7, 299.6 123.9
 Q 299.3 123.1, 299.3 122.1
 ' fill='#000000'/>
-<path class='note' d='M 301.4 123.3
-Q 301.5 123.3, 301.7 123.4
-Q 301.9 123.5, 302.2 123.6
-Q 302.4 123.6, 302.7 123.6
-Q 303.2 123.6, 303.4 123.4
-Q 303.7 123.2, 303.7 122.8
-Q 303.7 122.5, 303.6 122.3
-Q 303.4 122.2, 303.2 122.1
-Q 303.0 122.0, 302.7 121.9
-Q 302.2 121.8, 302.0 121.6
-Q 301.7 121.5, 301.5 121.2
-Q 301.3 121.0, 301.3 120.5
-Q 301.3 119.9, 301.8 119.5
-Q 302.2 119.2, 303.0 119.2
-Q 303.6 119.2, 304.2 119.4
-L 304.1 120.0
-Q 303.5 119.7, 303.0 119.7
-Q 302.6 119.7, 302.3 119.9
-Q 302.0 120.1, 302.0 120.5
-Q 302.0 120.7, 302.2 120.9
-Q 302.3 121.0, 302.5 121.1
-Q 302.7 121.2, 303.0 121.3
-Q 303.5 121.5, 303.7 121.6
-Q 304.0 121.7, 304.2 122.0
-Q 304.4 122.3, 304.4 122.8
-Q 304.4 123.5, 303.9 123.8
-Q 303.5 124.2, 302.7 124.2
-Q 302.3 124.2, 302.0 124.1
-Q 301.6 124.0, 301.2 123.8
-L 301.4 123.3
+<path class='note' d='M 303.9 124.0
+L 302.7 122.0
+L 302.7 122.0
+L 301.9 122.0
+L 301.9 124.0
+L 301.2 124.0
+L 301.2 119.1
+L 302.7 119.1
+Q 303.5 119.1, 303.9 119.5
+Q 304.3 119.9, 304.3 120.6
+Q 304.3 121.1, 304.1 121.5
+Q 303.8 121.8, 303.3 121.9
+L 304.6 124.0
+L 303.9 124.0
+M 301.9 121.5
+L 302.7 121.5
+Q 303.1 121.5, 303.4 121.2
+Q 303.6 121.0, 303.6 120.6
+Q 303.6 120.1, 303.4 119.9
+Q 303.1 119.7, 302.7 119.7
+L 301.9 119.7
+L 301.9 121.5
 ' fill='#000000'/>
-<path class='note' d='M 306.4 122.1
-Q 306.4 123.1, 306.2 123.9
-Q 305.9 124.7, 305.3 125.6
-L 304.9 125.3
+<path class='note' d='M 306.5 122.1
+Q 306.5 123.1, 306.2 123.9
+Q 305.9 124.7, 305.4 125.6
+L 305.0 125.3
 Q 305.4 124.5, 305.6 123.7
-Q 305.8 123.0, 305.8 122.1
-Q 305.8 121.1, 305.6 120.4
-Q 305.4 119.6, 304.9 118.8
-L 305.3 118.6
+Q 305.9 123.0, 305.9 122.1
+Q 305.9 121.1, 305.6 120.4
+Q 305.4 119.6, 305.0 118.8
+L 305.4 118.6
 Q 305.9 119.5, 306.2 120.3
-Q 306.4 121.1, 306.4 122.1
+Q 306.5 121.1, 306.5 122.1
 ' fill='#000000'/>
 <path class='note' d='M 239.7 95.3
 Q 239.7 94.1, 240.3 93.5
