@@ -17,7 +17,7 @@ def load_config(config_path="config.yaml"):
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-config = load_config("RetroTideV2/krswaps/config.yaml")
+config = load_config("RetroTideV2/krswaps/config_0.yaml")
 
 def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
                                   extender_codes: Optional[List[str]] = None):
@@ -99,22 +99,22 @@ def plot_stereo_comparison(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene
     """
     highlight_1 = {}
     highlight_2 = {}
-    # Green for matching chirality
+    # Cyan for matching chirality
     for atom_idx in chiral_result.match1:
-        highlight_1[atom_idx] = (0, 1, 0)
+        highlight_1[atom_idx] = (0, 1, 1)
     for atom_idx in chiral_result.match2:
-        highlight_2[atom_idx] = (0, 1, 0)
+        highlight_2[atom_idx] = (0, 1, 1)
     # Red for mismatching chirality
     for atom_idx in chiral_result.mmatch1:
         highlight_1[atom_idx] = (1, 0, 0)
     for atom_idx in chiral_result.mmatch2:
         highlight_2[atom_idx] = (1, 0, 0)
 
-    # Green for matching alkene stereochemistry
+    # Cyan for matching alkene stereochemistry
     for atom_idx in alkene_result.match1:
-        highlight_1[atom_idx] = (0, 1, 0)
+        highlight_1[atom_idx] = (0, 1, 1)
     for atom_idx in alkene_result.match2:
-        highlight_2[atom_idx] = (0, 1, 0)
+        highlight_2[atom_idx] = (0, 1, 1)
     # Red for mismatching alkene stereochemistry
     for atom_idx in alkene_result.mmatch1:
         highlight_1[atom_idx] = (1, 0, 0)
