@@ -5,12 +5,12 @@
     "[\"AT{'substrate': 'prop'}\", 'loading: True']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B2'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A1'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C1'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A1'}\", 'loading: False']",
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A1'}\", 'loading: False']"
   ],
   "Final PKS Product": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@H]1C",
-  "Initial Jaccard Similarity": 0.52099609375,
+  "Initial Jaccard Similarity": 0.533203125,
   "Final Jaccard Similarity": 1.0
 }
