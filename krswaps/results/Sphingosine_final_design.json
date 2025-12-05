@@ -3,11 +3,11 @@
   "Matching 2D Target Substructure": "CCCCCCCCCCCC/C=C/[C@@H](O)CCO",
   "Final PKS Design": [
     "[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: True']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'D'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']"
   ],

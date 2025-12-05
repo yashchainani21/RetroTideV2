@@ -10,9 +10,9 @@
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']",
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'A'}\", 'loading: False']",
-    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'A'}\", \"DH{'type': 'Z'}\", 'loading: False']"
+    "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False']"
   ],
   "Final PKS Product": "CC/C=C/C=C\\C=C/[C@H](O)C[C@@H](O)C/C=C/[C@H]1CC=CC(=O)O1",
-  "Initial Jaccard Similarity": 0.2099609375,
+  "Initial Jaccard Similarity": 0.18310546875,
   "Final Jaccard Similarity": 0.28564453125
 }

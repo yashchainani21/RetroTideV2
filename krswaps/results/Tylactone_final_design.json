@@ -12,6 +12,6 @@
     "[\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'A'}\", 'loading: False']"
   ],
   "Final PKS Product": "CC[C@H]1OC(=O)C[C@@H](O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)/C=C/C(C)=C/[C@@H]1C",
-  "Initial Jaccard Similarity": 0.5546875,
+  "Initial Jaccard Similarity": 0.61669921875,
   "Final Jaccard Similarity": 0.8056640625
 }
