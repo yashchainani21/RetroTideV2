@@ -2,11 +2,12 @@
 Modules for KR Swaps stereochemistry correction
 """
 # pylint: disable=no-member
+import json
 from collections import namedtuple, OrderedDict
-from dataclasses import dataclass
 from typing import Optional, List, Tuple
 from rdkit import Chem
 from rdkit.Chem import rdFMCS, AllChem, Draw
+from mapchiral.mapchiral import encode, jaccard_similarity
 import pandas as pd
 import bcs
 from retrotide import structureDB, designPKS, compareToTarget
@@ -160,7 +161,7 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
     if release_mechanism == 'cyclization':
         ester_pattern = '[C:1](=[O:2])[O:3][C:4]'
         ester_matches = substructure_search(mol, ester_pattern)
-        target_size = lactone_size(mol, ester_matches)
+        target_size = lactone_size(mol, ester_matches)[0]
         if target_size != 0:
             hydroxyl_pattern = '[OH1]'
             hydroxyl_matches = substructure_search(pks_product, hydroxyl_pattern)
@@ -186,7 +187,7 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
 
 def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple[Chem.Mol, dict]:
     target_smi = canonicalize_smiles(target, stereo)
-    pks_design, pks_product = initial_pks(target_smi)
+    pks_design = initial_pks(target_smi)[0]
     mapped_product = module_map_product(pks_design)
     unbound_mol = te_offload(mapped_product, Chem.MolFromSmiles(target_smi), offload_mech)[0]
     pks_features = get_design_features(pks_design)
@@ -237,8 +238,8 @@ def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol):
         print(f'Extracting the PKS precursor from the target molecule.')
         precursor_atoms = pks_precursor_atoms(unbound_mol, mol)
         precursor_mol = extract_precursor_mol(mol, precursor_atoms)
-        return precursor_mol
-    return mol
+        return precursor_mol, mcs_score
+    return mol, mcs_score
 
 # Atom and module mapping functions
 def module_map_product(pks_design: list) -> Chem.Mol:
@@ -442,19 +443,21 @@ def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map:
                 mmatch2.append(idx2)
     return AlkeneCheckResult(match1, match2, mmatch1, mmatch2)
 
-def preprocessing(pks_features: dict, target: Chem.Mol):
+ProcessingResult = namedtuple('ProcessingResult',
+                              ['unbound_mol', 'target_mol', 'mapping', 'chiral_result', 'alkene_result'])
+
+def preprocessing(pks_features: dict, unbound_mol: Chem.Mol, target: Chem.Mol):
     module_mapped_df = module_map(unbound_mol)
     atom_mapped_df = atom_map(unbound_mol, target)
     full_mapped_df = full_map(atom_mapped_df, module_mapped_df)
     lactone_atoms = get_lactone_atoms(unbound_mol)
-    target_lactone_atoms = find_target_lactone(lactone_atoms, full_mapped_df)
+    target_lactone_atoms = find_target_lactone(unbound_mol, full_mapped_df)
     unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms, full_mapped_df, pks_features)
     target_mol = force_target_lactone_alkene(target, target_lactone_atoms)
-    chiral_results = get_rs_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
-    alkene_results = get_ez_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
-    return unbound_mol, target_mol, chiral_results, alkene_results, full_mapped_df
+    chiral_result = get_rs_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
+    alkene_result = get_ez_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
+    return ProcessingResult(unbound_mol, target_mol, full_mapped_df, chiral_result, alkene_result)
 
-# KR Swaps Algorithm
 # Identify stereochemistry mismatch case functions
 def extract_carbon_pairs(mol: Chem.Mol, full_map: pd.DataFrame) -> list:
     carbons = {}
@@ -540,7 +543,8 @@ def check_alkene_mismatch(mol: Chem.Mol, pair: tuple, alkene_mmatch1: list) -> d
             })
     return substructure_results
 
-def check_cc_mismatch_cases(mol: Chem.Mol, cc_mismatch_pairs: list, cc_mmatch1: list) -> list:
+def check_cc_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, cc_mmatch1: list) -> list:
+    cc_mismatch_pairs = identify_pairs_with_mismatches(carbon_pairs, cc_mmatch1)
     cc_mismatch_results = []
     for pair in cc_mismatch_pairs:
         pair_info = {
@@ -564,7 +568,8 @@ def check_cc_mismatch_cases(mol: Chem.Mol, cc_mismatch_pairs: list, cc_mmatch1: 
         cc_mismatch_results.append(pair_info)
     return cc_mismatch_results
 
-def check_alkene_mismatch_cases(mol: Chem.Mol, alkene_mismatch_pairs: list, alkene_mmatch1: list) -> list:
+def check_alkene_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, alkene_mmatch1: list) -> list:
+    alkene_mismatch_pairs = identify_pairs_with_mismatches(carbon_pairs, alkene_mmatch1)
     alkene_mismatch_results = []
     for pair in alkene_mismatch_pairs:
         pair_info = {
@@ -581,6 +586,16 @@ def check_alkene_mismatch_cases(mol: Chem.Mol, alkene_mismatch_pairs: list, alke
             })
         alkene_mismatch_results.append(pair_info)
     return alkene_mismatch_results
+
+def get_cc_mismatch_results(mol1: Chem.Mol, mol2: Chem.Mol, full_map: pd.DataFrame, cc_result):
+    pairs = extract_carbon_pairs(mol1, full_map)
+    mismatch_results = check_cc_mismatch_cases(mol1, pairs, cc_result.mmatch1)
+    return mismatch_results
+
+def get_alkene_mismatch_results(mol1: Chem.Mol, mol2: Chem.Mol, full_map: pd.DataFrame, alkene_result):
+    pairs = extract_carbon_pairs(mol1, full_map)
+    mismatch_results = check_alkene_mismatch_cases(mol1, pairs, alkene_result.mmatch1)
+    return mismatch_results
 
 # Employ reductive loop swaps functions
 def kr_type_logic(pks_features: dict, target_mod: int, alpha: bool, beta: bool) -> str:
@@ -627,15 +642,19 @@ def kr_type_logic(pks_features: dict, target_mod: int, alpha: bool, beta: bool) 
     return new_kr_type
 
 def er_type_logic(pks_features: dict, target_mod: int) -> str:
-    old_er_type = pks_features['ER Type'][target_mod]
-    new_er_type = None
-    substrate = pks_features['Substrate'][target_mod]
-    if substrate != 'Malonyl-CoA':
-        new_er_type = 'D' if old_er_type == 'L' else 'L'
-        print('   Case 7: Swapping ER subtype')
+    if pks_features['ER Type'][target_mod] != 'None':
+        old_er_type = pks_features['ER Type'][target_mod]
+        new_er_type = None
+        substrate = pks_features['Substrate'][target_mod]
+        if substrate != 'Malonyl-CoA':
+            new_er_type = 'D' if old_er_type == 'L' else 'L'
+            print('   Case 7: Swapping ER subtype')
+        else:
+            return old_er_type # ER subtype can be ignored as malonyl-CoA has no alpha chiral center
+        return new_er_type
     else:
-        return old_er_type # ER subtype can be ignored as malonyl-CoA has no alpha chiral center
-    return new_er_type
+        print(f'   No ER domain present in {target_mod} -> cannot fix mismatch by ER swap')
+        return 'None'
 
 def kr_dh_type_logic(pks_features: dict, target_mod: int) -> str:
     old_dh_type = pks_features['DH Type'][target_mod]
@@ -713,7 +732,7 @@ def dh_swaps(pks_features: dict, mismatch_results: list) -> dict:
         identify_dh_swap_case(pks_features, result)
     return pks_features
 
-def new_pks_design(pks_features: dict) -> Chem.Mol:
+def new_pks_design(pks_features: dict) -> tuple[Chem.Mol, list]:
     """
     Reconstruct PKS design based on updated KR types
 
@@ -744,29 +763,32 @@ def new_pks_design(pks_features: dict) -> Chem.Mol:
     new_pks_product = cluster_f.computeProduct(structureDB)
     return new_pks_product, new_pks_design
 
-def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.DataFrame, chiral_result: ChiralCheckResult,
-                      alkene_result: AlkeneCheckResult, pks_features: dict,):
-    pairs = extract_carbon_pairs(unbound_mol, full_map)
-    cc_mismatch_pairs = identify_pairs_with_mismatches(pairs, chiral_result.mmatch1)
-    cc_mismatch_results = check_cc_mismatch_cases(unbound_mol, cc_mismatch_pairs, chiral_result.mmatch1)
+CorrectionResult = namedtuple('CorrectionResult',
+                                ['pks_product', 'pks_design', 'target', 'mapping', 'chiral_result', 'alkene_result'])
+
+def postprocessing(pks_features_updated: dict, target_mol: Chem.Mol, offload_mech: str):
+    new_design = new_pks_design(pks_features_updated)[1]
+    mapped_product = module_map_product(new_design)
+    new_pks_product = te_offload(mapped_product, target_mol, offload_mech)[0]
+    pp_result = preprocessing(pks_features_updated, new_pks_product, target_mol)
+    return CorrectionResult(pp_result.unbound_mol, new_design, pp_result.target_mol, pp_result.mapping, pp_result.chiral_result, pp_result.alkene_result)
+
+def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.DataFrame, pks_features: dict, offload_mech: str, chiral_result, alkene_result):
     print('Correcting R/S stereochemistry')
+    cc_mismatch_results = get_cc_mismatch_results(unbound_mol, target_mol, full_map, chiral_result)
     pks_features_updated = kr_swaps(pks_features, cc_mismatch_results)
 
-    alkene_mismatch_pairs = identify_pairs_with_mismatches(pairs, alkene_result.mmatch1)
-    alkene_mismatch_results = check_alkene_mismatch_cases(unbound_mol, alkene_mismatch_pairs, alkene_result.mmatch1)
     print('Correcting E/Z stereochemistry')
+    alkene_mismatch_results = get_alkene_mismatch_results(unbound_mol, target_mol, full_map, alkene_result)
     pks_features_updated = dh_swaps(pks_features_updated, alkene_mismatch_results)
 
-    new_pks_product, new_design = new_pks_design(pks_features_updated)
-    unbound_mol_f, target_mol_f, chiral_results_f, alkene_results_f, full_mapped_df_f = preprocessing(new_pks_design, target_mol)  
-    if chiral_results_f.mmatch1:
-        pairs = extract_carbon_pairs(unbound_mol_f, full_mapped_df_f)
-        cc_mismatch_pairs = identify_pairs_with_mismatches(pairs, chiral_results_f.mmatch1)
-        cc_mismatch_results = check_cc_mismatch_cases(unbound_mol_f, cc_mismatch_pairs, chiral_results_f.mmatch1)
+    krs_result = postprocessing(pks_features_updated, target_mol, offload_mech)
+    if krs_result.chiral_result.mmatch1:
         print('Correcting remianing R/S mismatches')
-        pks_features_updated = er_swaps(pks_features_updated, cc_mismatch_results)
-        return new_pks_design(pks_features_updated)
-    return new_pks_product, new_design
+        cc_mismatch_results_f = get_cc_mismatch_results(krs_result.pks_product, krs_result.target, krs_result.mapping, krs_result.chiral_result)
+        pks_features_updated = er_swaps(pks_features_updated, cc_mismatch_results_f)
+        return postprocessing(pks_features_updated, target_mol, offload_mech)
+    return krs_result
 
 # Post processing functions
 def add_atom_labels(mol: Chem.Mol, chiral_centers: dict) -> Chem.Mol:
@@ -829,3 +851,55 @@ def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_resul
                                 highlightBondLists=[bond_indices_1, bond_indices_2], 
                                 useSVG=True, 
                                 subImgSize=(500, 400))
+
+def compute_jaccard_sim(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
+    """
+    Compute the Jaccard similarity between two molecules
+    """
+    mol1 = Chem.MolFromSmiles(Chem.MolToSmiles(mol1))
+    mol2 = Chem.MolFromSmiles(Chem.MolToSmiles(mol2))
+    fp1 = encode(mol1, max_radius=2, n_permutations=2048, mapping=False)
+    fp2 = encode(mol2, max_radius=2, n_permutations=2048, mapping=False)
+    return jaccard_similarity(fp1, fp2)
+
+# Run stereochemistry correction
+def krswaps_stereo_correction(target_smi: str, stereo: str, offload_mech: str):
+    target_mol = Chem.MolFromSmiles(canonicalize_smiles(target_smi, stereo))
+    unbound_pks_product, pks_design_features = get_retro_tide_results(target_smi, stereo, offload_mech)
+    pks_target_mol, mcs_score = get_pks_target(unbound_pks_product, target_mol)
+    pp_result = preprocessing(pks_design_features, unbound_pks_product, pks_target_mol)
+    krs_result = kr_swap_algorithm(
+        pp_result.unbound_mol,
+        pp_result.target_mol,
+        pp_result.mapping,
+        pks_design_features,
+        offload_mech,
+        pp_result.chiral_result,
+        pp_result.alkene_result)
+    return {
+        'stereo_before': visualize_stereo_correspondence(pp_result.unbound_mol, pp_result.target_mol, pp_result.chiral_result, pp_result.alkene_result),
+        'stereo_after': visualize_stereo_correspondence(krs_result.pks_product, krs_result.target, krs_result.chiral_result, krs_result.alkene_result),
+        'final_pks_design': str(krs_result.pks_design),
+        'target_molecule': Chem.MolToSmiles(target_mol),
+        'target_pks_precursor': Chem.MolToSmiles(pks_target_mol),
+        'final_pks_product': Chem.MolToSmiles(krs_result.pks_product),
+        'mcs_similarity': mcs_score,
+        'jaccard_i': compute_jaccard_sim(pp_result.unbound_mol, target_mol),
+        'jaccard_f': compute_jaccard_sim(krs_result.pks_product, target_mol)
+    }
+
+def output_results(results, job_name, output_path):
+    with open(f'{output_path}/{job_name}_stereocorrection_results.json', 'w', encoding='utf-8') as json_file:
+        json.dump({
+            'Target Molecule': results['target_molecule'],
+            'Target PKS Precursor': results['target_pks_precursor'],
+            'Final PKS Design': results['final_pks_design'],
+            'Final PKS Product': results['final_pks_product'],
+            'MCS Similarity': results['mcs_similarity'],
+            'Initial Jaccard Similarity': results['jaccard_i'],
+            'Final Jaccard Similarity': results['jaccard_f']
+        }, json_file, indent=2)
+    with open(f'{output_path}/{job_name}_initial_stereo_correspondence.svg', 'w', encoding='utf-8') as pre_img:
+        pre_img.write(results['stereo_before'])
+    with open(f'{output_path}/{job_name}_final_stereo_correspondence.svg', 'w', encoding='utf-8') as post_img:
+        post_img.write(results['stereo_after'])
