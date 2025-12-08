@@ -1,26 +1,105 @@
-'''
-Module to handle KR swaps based on chiral mismatches between the PKS product and target molecule
-
-@author: Kenna Roberts
-'''
+"""
+Modules for KR Swaps stereochemistry correction
+"""
 # pylint: disable=no-member
-from collections import OrderedDict
+from collections import namedtuple, OrderedDict
 from dataclasses import dataclass
+from typing import Optional, List, Tuple
 from rdkit import Chem
+from rdkit.Chem import rdFMCS, AllChem, Draw
 import pandas as pd
 import bcs
-from retrotide import structureDB
+from retrotide import structureDB, designPKS, compareToTarget
 
-@dataclass
-class PatternFlags:
-    """
-    Data class to hold flags for different substituent patterns
-    """
-    is_alpha: bool = False
-    is_hydroxyl: bool = False
-    is_ester: bool = False
+# Helper functions
+def mcs_search(mol_1: Chem.Mol, mol_2: Chem.Mol, chiral: bool) -> tuple[int, str]:
+    mcs = rdFMCS.FindMCS(
+        [mol_1, mol_2],
+        timeout=10,
+        matchValences=True,
+        matchChiralTag=chiral,
+        bondCompare=Chem.rdFMCS.BondCompare.CompareOrderExact,
+        ringMatchesRingOnly=False
+        )
+    atom_ct = mcs.numAtoms
+    smarts = Chem.MolFromSmarts(mcs.smartsString)
+    return atom_ct, smarts
 
-def get_bcs_info(pks_design: list)-> dict:
+def substructure_search(mol: Chem.Mol, pattern: str):
+    """
+    Identify substructure matches
+    """
+    pattern_mol = Chem.MolFromSmarts(pattern)
+    matches = mol.GetSubstructMatches(pattern_mol)
+    return matches
+
+def lactone_size(mol: Chem.Mol, pattern_matches: tuple) -> tuple[int, tuple]:
+    """
+    Identify the size of the largest lactone in the target molecule
+    """
+    ring_info = mol.GetRingInfo()
+    lactone_sizes = []
+    if ring_info.AtomRings():
+        for ring in ring_info.AtomRings():
+            if any(idx in ring for match in pattern_matches for idx in match):
+                lactone_sizes.append((len(ring) - 1))
+            else:
+                lactone_sizes.append(int(0))
+    if lactone_sizes:
+        return max(lactone_sizes), ring
+    return 0, None
+
+def get_mod_number(module_label: str) -> int:
+    if module_label == 'LM':
+        return 0
+    else:
+        return int(module_label.lstrip('M'))
+    
+# Obtain RetroTide results functions
+def canonicalize_smiles(molecule_str: str, stereo: str) -> str:
+    """
+    Standardizes a SMILES string and returns its canonical form with the
+    specified isomeric information.
+    
+    Args:
+        molecule_str (str): The SMILES string of the target molecule
+        stereo (str): The type of stereochemistry to specify
+
+    Returns:
+        str: The canonicalized SMILES string
+    """
+    mol = Chem.MolFromSmiles(molecule_str)
+    if stereo == 'R/S':
+        target = Chem.MolToSmiles(mol, isomericSmiles=True).replace('/', '').replace('\\', '')
+    elif stereo == 'E/Z':
+        target = Chem.MolToSmiles(mol, isomericSmiles=True).replace('@', '').replace('@@', '')
+    elif stereo == 'none':
+        target = Chem.MolToSmiles(mol, isomericSmiles=False)
+    elif stereo == 'all':
+        target = Chem.MolToSmiles(mol, isomericSmiles=True) 
+    else:
+        raise ValueError("Invalid stereo option. Choose from 'R/S', 'E/Z', 'none', or 'all'.")
+    return target
+
+def initial_pks(target: str) -> tuple[list, Chem.Mol]:
+    """
+    Computes a PKS design to synthesize the 2D structure of the target molecule
+
+    Args:
+        target (str): The SMILES string of the target molecule
+
+    Returns:
+        pks_design: Initial RetroTide proposed PKS design
+        mol (Chem.Mol): The computed product of the PKS design
+    """
+    designs = designPKS(Chem.MolFromSmiles(target),
+                        maxDesignsPerRound = 500,
+                        similarity = 'mcs_without_stereo')
+    pks_design = designs[-1][0][0].modules
+    mol = designs[-1][0][0].computeProduct(structureDB)
+    return pks_design, mol
+
+def get_design_features(pks_design: list) -> dict:
     """
     Constructs a dictionary containing information about the PKS design
 
@@ -29,374 +108,724 @@ def get_bcs_info(pks_design: list)-> dict:
 
     Returns:
         pks_features (dict): Dictionary with information about the intial PKS design,
-        including module number, substrate, KR type, and whether DH or ER domains are present.
+        including module number, substrate, KR, DH, and ER subtypes, and whether DH
+        or ER domains are present.
     """
     pks_features = {
-        'Module Number': [],
+        'Module': [],
         'Substrate': [],
         'KR Type': [],
-        'DH' : [],
-        'ER' : []
+        'DH Type': [],
+        'ER Type': [],
     }
     for idx, module in enumerate(pks_design):
-        pks_features['Module Number'].append(idx)
-        substrate = module.domains[bcs.AT].substrate
-        pks_features['Substrate'].append(substrate)
+        pks_features['Module'].append(idx)
+        pks_features['Substrate'].append(module.domains[bcs.AT].substrate)
         if bcs.KR in module.domains:
-            kr_type = module.domains[bcs.KR].type
-            pks_features['KR Type'].append(kr_type)
+            pks_features['KR Type'].append(module.domains[bcs.KR].type)
             if bcs.DH in module.domains:
-                pks_features['DH'].append(True)
+                pks_features['DH Type'].append(module.domains[bcs.DH].type)
             else:
-                pks_features['DH'].append(False)        
+                pks_features['DH Type'].append('None')
             if bcs.ER in module.domains:
-                pks_features['ER'].append(True)
+                pks_features['ER Type'].append(module.domains[bcs.ER].type)
             else:
-                pks_features['ER'].append(False)
+                pks_features['ER Type'].append('None')
         else:
-            pks_features['KR Type'].append(None)
-            pks_features['DH'].append(False)
-            pks_features['ER'].append(False)
+            pks_features['KR Type'].append('None')
+            pks_features['DH Type'].append('None')
+            pks_features['ER Type'].append('None')
     return pks_features
 
-def find_adjacent_backbone_carbon_pairs(mol: Chem.Mol, fully_mapped_df: pd.DataFrame) -> list:
-    """
-    Finds pairs of adjacent backbone carbon atoms in the PKS product
-    """
-    # Create a mapping from atom index to module
-    atom_to_module = {}
-    for _, row in fully_mapped_df.iterrows():
-        atom_idx = int(row['Product Atom Idx'])
-        module = row['Module']
-        atom_to_module[atom_idx] = module
-    carbon_atoms = [atom.GetIdx() for atom in mol.GetAtoms() if atom.GetSymbol() == 'C']
-    # Find adjacent carbon pairs from different modules
-    adjacent_pairs = []
-    for carbon_idx in carbon_atoms:
-        if carbon_idx not in atom_to_module:
-            continue
-        carbon_atom = mol.GetAtomWithIdx(carbon_idx)
-        carbon_module = atom_to_module[carbon_idx]
-        # Check all neighboring atoms
-        for neighbor in carbon_atom.GetNeighbors():
-            neighbor_idx = neighbor.GetIdx()
-            # Only consider carbon neighbors
-            if neighbor.GetSymbol() == 'C' and neighbor_idx in atom_to_module:
-                neighbor_module = atom_to_module[neighbor_idx]
-                # Only include if from different modules
-                if carbon_module != neighbor_module:
-                    # Create ordered pair to avoid duplicates (smaller index first)
-                    pair = tuple(sorted([(carbon_idx, carbon_module),
-                                        (neighbor_idx, neighbor_module)],
-                                        key=lambda x: x[0]))                    
-                    if pair not in adjacent_pairs:
-                        adjacent_pairs.append(pair)
-    return adjacent_pairs
+def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> tuple:
+    Chem.SanitizeMol(pks_product)
+    thioester_pattern = '[C:1](=[O:2])[S:3]'
+    thioester_matches = substructure_search(pks_product, thioester_pattern)
+    c_idx, o_idx, s_idx = thioester_matches[0]
+    carbonyl_c_idx = thioester_matches[0][0]
+    if not thioester_matches:
+        print("Warning: No thioester found")
+        return (pks_product,)
 
-def get_module_order(module_name: str) -> int:
+    if release_mechanism == 'thiolysis':
+        editable_product = Chem.EditableMol(pks_product)
+        editable_product.RemoveBond(c_idx, s_idx)
+        editable_product.RemoveAtom(s_idx)
+        acid_o_idx = editable_product.AddAtom(Chem.Atom('O'))
+        editable_product.AddBond(c_idx, acid_o_idx, Chem.rdchem.BondType.SINGLE)
+        unbound_mol = editable_product.GetMol()
+        Chem.SanitizeMol(unbound_mol)
+        return (unbound_mol,)
+
+    if release_mechanism == 'cyclization':
+        ester_pattern = '[C:1](=[O:2])[O:3][C:4]'
+        ester_matches = substructure_search(mol, ester_pattern)
+        target_size = lactone_size(mol, ester_matches)
+        if target_size != 0:
+            hydroxyl_pattern = '[OH1]'
+            hydroxyl_matches = substructure_search(pks_product, hydroxyl_pattern)
+            if not hydroxyl_matches:
+                print("Warning: No hydroxyl groups found. Cannot cyclize")
+                return(pks_product,)
+            for hydroxyl in hydroxyl_matches:
+                hydroxyl_o_idx = hydroxyl[0]
+                distance = len(Chem.GetShortestPath(pks_product, carbonyl_c_idx, hydroxyl_o_idx)) - 1
+                if distance == target_size:
+                    editable_product = Chem.EditableMol(pks_product)
+                    editable_product.RemoveBond(carbonyl_c_idx, s_idx)
+                    editable_product.AddBond(carbonyl_c_idx, hydroxyl_o_idx, Chem.rdchem.BondType.SINGLE)
+                    editable_product.RemoveAtom(s_idx)
+                    unbound_mol = editable_product.GetMol()
+                    Chem.SanitizeMol(unbound_mol)
+                    return (unbound_mol,)
+            print(f"No hydroxyl group found at the target distance {target_size}. Cannot cyclize")
+            return (pks_product,)
+        print("Warning: No valid lactone found in target")
+        return (pks_product,)
+    return (unbound_mol,)
+
+def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple[Chem.Mol, dict]:
+    target_smi = canonicalize_smiles(target, stereo)
+    pks_design, pks_product = initial_pks(target_smi)
+    mapped_product = module_map_product(pks_design)
+    unbound_mol = te_offload(mapped_product, Chem.MolFromSmiles(target_smi), offload_mech)[0]
+    pks_features = get_design_features(pks_design)
+    return unbound_mol, pks_features
+
+# Precursor extraction functions
+def pks_precursor_atoms(unbound_mol: Chem.Mol, mol: Chem.Mol) -> set:
+    mcs_atoms, mcs_smarts = mcs_search(unbound_mol, mol, False)
+    if mcs_atoms > 0:
+        precursor_atoms = set(mol.GetSubstructMatch(mcs_smarts))
+    else:
+        precursor_atoms = set()
+    return precursor_atoms
+
+def extract_precursor_mol(mol: Chem.Mol, precursor_atoms: set) -> Chem.Mol:
+    mol_copy = Chem.Mol(mol)
+    for atom in mol_copy.GetAtoms():
+        atom.SetIntProp("original_idx", atom.GetIdx())
+    editable_target = Chem.EditableMol(mol_copy)
+    break_bonds = []
+    for bond in mol_copy.GetBonds():
+        idx1 = bond.GetBeginAtomIdx()
+        idx2 = bond.GetEndAtomIdx()
+        if (idx1 in precursor_atoms) != (idx2 in precursor_atoms):
+            break_bonds.append((idx1, idx2))
+    for idx1, idx2 in break_bonds:
+        editable_target.RemoveBond(idx1, idx2)
+    original_atoms = set(range(mol.GetNumAtoms()))
+    remove_atoms = sorted(original_atoms - precursor_atoms, reverse=True)
+    for atom_idx in remove_atoms:
+        editable_target.RemoveAtom(atom_idx)
+    precursor_mol = editable_target.GetMol()
+    try:
+        Chem.SanitizeMol(precursor_mol,
+                         sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
+    except Exception:
+        try:
+            Chem.SanitizeMol(precursor_mol,
+                             sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
+        except Exception:
+            pass
+    return precursor_mol
+
+def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol):
+    mcs_score = compareToTarget(unbound_mol, mol, 'mcs_without_stereo')
+    if mcs_score < 1.0:
+        print(f'The PKS product only matches {mcs_score*100:.1f}% of the 2D target molecule.')
+        print(f'Extracting the PKS precursor from the target molecule.')
+        precursor_atoms = pks_precursor_atoms(unbound_mol, mol)
+        precursor_mol = extract_precursor_mol(mol, precursor_atoms)
+        return precursor_mol
+    return mol
+
+# Atom and module mapping functions
+def module_map_product(pks_design: list) -> Chem.Mol:
     """
-    Helper function to extract module order
+    Maps atoms of the PKS product to each module in the PKS design.
+
+    Args:
+        pks_design (list): The RetroTide proposed PKS design
 
     Returns:
-        module_number (int): 'LM' as 0 and 'M1' as 1, etc.
+        mapped_product (Chem.Mol): An atom-module mapped PKS product
     """
-    if module_name == 'LM':
-        module_number = 0
-    elif module_name.startswith('M'):
-        module_number = int(module_name[1:])
+    cluster = bcs.Cluster(modules = pks_design)
+    mapped_product = bcs.Cluster.create_atom_maps(cluster, structureDB)[-1]
+    return mapped_product
+
+def module_map(unbound_mol: Chem.Mol) -> pd.DataFrame:
+    module_map_df = pd.DataFrame(columns=['Atom Type', 'Product Atom Idx', 'Module Idx'])
+    for i, atom in enumerate(unbound_mol.GetAtoms()):
+        if not atom.HasProp('atomLabel'):
+            module = '-'
+        else:
+            module = atom.GetProp('atomLabel')
+        atom_entry = pd.DataFrame({
+            'Atom Type': [atom.GetSymbol()],
+            'Product Atom Idx': [atom.GetIdx()],
+            'Module Idx': [module]
+        },
+        index = [i])
+        module_map_df = pd.concat([module_map_df, atom_entry])
+    return module_map_df
+
+def atom_map(unbound_mol: Chem.Mol, mol: Chem.Mol) -> pd.DataFrame:
+    """"
+    Uses maximum common substructure search to map atoms of the offloaded
+    PKS product to the target molecule
+
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        target_mol (Chem.Mol): The target molecule
+
+    Returns:
+        mcs_mapped_atoms_df (pd.DataFrame): DataFrame containing atom type,
+        product atom index, and target atom index
+    """
+    atom_map_df = pd.DataFrame(columns=['Atom Type', 'Product Atom Idx', 'Target Atom Idx'])
+    mcs_atoms, mcs_smarts = mcs_search(unbound_mol, mol, False)
+    if mcs_atoms > 0:
+        mol_1_match = unbound_mol.GetSubstructMatch(mcs_smarts)
+        mol_2_match = mol.GetSubstructMatch(mcs_smarts)
+        for i, (idx_1, idx_2) in enumerate(zip(mol_1_match, mol_2_match)):
+            atom_entry = pd.DataFrame({
+                'Atom Type': unbound_mol.GetAtomWithIdx(idx_1).GetSymbol(),
+                'Product Atom Idx': idx_1,
+                'Target Atom Idx': idx_2
+            },
+            index = [i])
+            atom_map_df = pd.concat([atom_map_df, atom_entry], ignore_index=True)
     else:
-        raise ValueError(f"Unknown module format: {module_name}")
-    return module_number
+        print("Warning: No common substructure found between the PKS product and target molecule")
+        return atom_map_df
+    return atom_map_df
 
-def filter_sequential_module_pairs(adjacent_pairs: list) -> list:
+def full_map(atom_map: pd.DataFrame, module_map: pd.DataFrame) -> pd.DataFrame:
     """
-    Uses the module order to extract pairs of adjacent carbon atoms that are from
-    sequential PKS modules
+    Merge PKS product atom and module mapping
     """
-    sequential_pairs = []    
-    for (atom1_idx, module1), (atom2_idx, module2) in adjacent_pairs:
-        order1 = get_module_order(module1)
-        order2 = get_module_order(module2)
-        
-        # Check if modules are sequential (difference of 1)
-        if abs(order1 - order2) == 1:
-            # Order so that earlier module comes first
-            if order1 < order2:
-                sequential_pairs.append((atom1_idx, module1, atom2_idx, module2))
+    full_map = pd.merge(
+        atom_map,
+        module_map,
+        on=['Atom Type', 'Product Atom Idx']).dropna()
+    return full_map
+
+# Handling lactone alkene stereochemistry functions
+def get_lactone_atoms(mol: Chem.Mol) -> tuple:
+    ester_matches = substructure_search(
+        mol, '[C:1](=[O:2])[O:3][C:4]')
+    return lactone_size(mol, ester_matches)[1]
+
+def find_target_lactone(mol: Chem.Mol, full_map: pd.DataFrame) -> tuple:
+    target_lactone_atoms = set()
+    lactone_atoms = get_lactone_atoms(mol)
+    for atom in lactone_atoms:
+        target_idx = full_map.loc[full_map['Product Atom Idx'] == atom, 'Target Atom Idx']
+        target_lactone_atoms.add(int(target_idx))
+    return tuple(target_lactone_atoms)
+
+def force_target_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple) -> Chem.Mol:
+    """
+    If the target lactone is 6 membered or less, force the alkene to have Z stereochemistry
+    """
+    Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
+    if len(lactone_atoms) <= 6:
+        for bond in mol.GetBonds():
+            if bond.GetBondType() == Chem.BondType.DOUBLE:
+                begin_idx = bond.GetBeginAtomIdx()
+                end_idx = bond.GetEndAtomIdx()
+                if begin_idx in lactone_atoms and end_idx in lactone_atoms:
+                    bond.SetStereo(Chem.BondStereo.STEREOZ)
+    return mol
+
+def force_pks_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple, full_map: pd.DataFrame, pks_features: dict):
+    """
+    Force PKS product lactone alkene stereochemistry based on the responsible DH subtype in the original PKS design
+    """
+    Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
+    if len(lactone_atoms) <= 6:
+        for bond in mol.GetBonds():
+            if bond.GetBondType() == Chem.BondType.DOUBLE:
+                begin_idx = bond.GetBeginAtomIdx()
+                end_idx = bond.GetEndAtomIdx()
+                if begin_idx in lactone_atoms and end_idx in lactone_atoms:
+                    begin_module = get_mod_number(full_map.loc[full_map['Product Atom Idx'] == begin_idx, 'Module Idx'].values[0])
+                    end_module = get_mod_number(full_map.loc[full_map['Product Atom Idx'] == end_idx, 'Module Idx'].values[0])
+                    target_module = begin_module if begin_module > end_module else end_module
+                    dh_subtype = pks_features['DH Type'][target_module]
+                    if dh_subtype == 'Z':
+                        bond.SetStereo(Chem.BondStereo.STEREOZ)
+                    elif dh_subtype == 'E':
+                        bond.SetStereo(Chem.BondStereo.STEREOE)
+    return mol
+
+# Assess stereochemistry correspondence functions
+ChiralCheckResult = namedtuple('ChiralCheckResult',
+                               ['match1', 'match2', 'mmatch1', 'mmatch2', 'cc1', 'cc2'])
+
+def get_rs_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map: pd.DataFrame) -> ChiralCheckResult:
+    """
+    Checks chirality of mapped atoms between the PKS product and target molecule
+
+    Returns:
+        ChiralCheckResult: A named tuple containing lists of matching and mismatching atom indices
+        and dicts of chiral centers
+    """
+    cc1 = dict(Chem.FindMolChiralCenters(unbound_mol, includeUnassigned=True))
+    cc2 = dict(Chem.FindMolChiralCenters(mol, includeUnassigned=True))
+    match1 = []
+    match2 = []
+    mmatch1 = []
+    mmatch2 = []
+
+    product_atoms = full_map['Product Atom Idx'].astype(int).tolist()
+    target_atoms = full_map['Target Atom Idx'].astype(int).tolist()
+    for idx1, idx2 in zip(product_atoms, target_atoms):
+        if idx1 in cc1 and idx2 in cc2:
+            if cc1[idx1] == cc2[idx2]:
+                match1.append(idx1)
+                match2.append(idx2)
             else:
-                sequential_pairs.append((atom2_idx, module2, atom1_idx, module1))
-    # Sort by the first module's order
-    sequential_pairs.sort(key=lambda x: get_module_order(x[1]))
-    return sequential_pairs
+                mmatch1.append(idx1)
+                mmatch2.append(idx2)
+    return ChiralCheckResult(match1, match2, mmatch1, mmatch2, cc1, cc2)
 
-def report_pairs_with_chiral_mismatches(sequential_pairs: list, mmatch1: list) -> list:
+def extract_ez_atoms(mol: Chem.Mol) -> Tuple[list, list]:
     """
-    Cross references each pairs with the list of mismatched chiral centers
+    Helper function to identify atoms involved in Z and E alkenes present.
+    Adds bondNote to assign CIP label to each alkene
     """
+    z_bonds = []
+    e_bonds = []
+    for bond in mol.GetBonds():
+        if bond.GetBondType() == Chem.BondType.DOUBLE:
+            stereo = bond.GetStereo()
+            begin_idx = bond.GetBeginAtomIdx()
+            end_idx = bond.GetEndAtomIdx()
+            if stereo == Chem.BondStereo.STEREOZ:
+                z_bonds.extend([begin_idx, end_idx])
+                bond.SetProp('bondNote', '(Z)')
+            elif stereo == Chem.BondStereo.STEREOE:
+                e_bonds.extend([begin_idx, end_idx])
+                bond.SetProp('bondNote', '(E)')
+    return z_bonds, e_bonds
+
+AlkeneCheckResult = namedtuple('AlkeneCheckResult',
+                                ['match1', 'match2', 'mmatch1', 'mmatch2'])
+
+def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map: pd.DataFrame) -> AlkeneCheckResult:
+    """
+    Checks alkene stereochemistry correspondence between the PKS product and target molecule
+
+    Returns:
+        AlkeneCheckResult: A named tuple containing lists of matching and mismatching atom indices
+        and dicts of double bonds
+    """
+    z_1, e_1 = extract_ez_atoms(unbound_mol)
+    z_2, e_2 = extract_ez_atoms(mol)
+    match1 = []
+    match2 = []
+    mmatch1 = []
+    mmatch2 = []
+
+    product_atoms = full_map['Product Atom Idx'].astype(int).tolist()
+    target_atoms = full_map['Target Atom Idx'].astype(int).tolist()
+    for idx1, idx2 in zip(product_atoms, target_atoms):
+        if idx1 in z_1 + e_1 and idx2 in z_2 + e_2:
+            if (idx1 in z_1 and idx2 in z_2) or (idx1 in e_1 and idx2 in e_2):
+                match1.append(idx1)
+                match2.append(idx2)
+            else:
+                mmatch1.append(idx1)
+                mmatch2.append(idx2)
+    return AlkeneCheckResult(match1, match2, mmatch1, mmatch2)
+
+def preprocessing(pks_features: dict, target: Chem.Mol):
+    module_mapped_df = module_map(unbound_mol)
+    atom_mapped_df = atom_map(unbound_mol, target)
+    full_mapped_df = full_map(atom_mapped_df, module_mapped_df)
+    lactone_atoms = get_lactone_atoms(unbound_mol)
+    target_lactone_atoms = find_target_lactone(lactone_atoms, full_mapped_df)
+    unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms, full_mapped_df, pks_features)
+    target_mol = force_target_lactone_alkene(target, target_lactone_atoms)
+    chiral_results = get_rs_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
+    alkene_results = get_ez_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
+    return unbound_mol, target_mol, chiral_results, alkene_results, full_mapped_df
+
+# KR Swaps Algorithm
+# Identify stereochemistry mismatch case functions
+def extract_carbon_pairs(mol: Chem.Mol, full_map: pd.DataFrame) -> list:
+    carbons = {}
+    for _, row in full_map.iterrows():
+        if row['Atom Type'] == 'C':
+            c_idx = int(row['Product Atom Idx'])
+            carbons[c_idx] = row['Module Idx']
+    
+    backbone_pairs = []
+    for c_idx in carbons.keys():
+        c_atom = mol.GetAtomWithIdx(c_idx)
+        for neighbor in c_atom.GetNeighbors():
+            if neighbor.GetSymbol() == 'C' and neighbor.GetIdx() in carbons.keys():
+                neighbor_mod = carbons[neighbor.GetIdx()]
+                if neighbor_mod != carbons[c_idx]:
+                    pair = tuple(sorted([(c_idx, carbons[c_idx]), (neighbor.GetIdx(), neighbor_mod)]))
+                    if pair not in backbone_pairs:
+                        backbone_pairs.append(pair)
+    return backbone_pairs
+
+def identify_pairs_with_mismatches(backbone_pairs: list, mmatch1: list) -> list:
     mismatch_pairs = []
-    for atom1_idx, module1, atom2_idx, module2 in sequential_pairs:
-        # Check if either atom is in the mismatch list
-        if atom1_idx in mmatch1 or atom2_idx in mmatch1:
-            mismatch_pairs.append((atom1_idx, module1, atom2_idx, module2))
+    for pair in backbone_pairs:
+        if pair[0][0] in mmatch1 or pair[1][0] in mmatch1:
+            mismatch_pairs.append(pair)
     return mismatch_pairs
 
-def check_alpha_carbon(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
-    """
-    Check if a carbon is alpha to a carbonyl, hydroxyl, or ester group
-    """
+def check_alpha_carbon_mismatch(mol: Chem.Mol, pair: tuple, mmatch1: list) -> dict:
     alpha_carbon_patterns = [
         '[C:1][C:2](=[O:3])',
         '[C:1][C:2][OH:3]',
+        '[C:1][C:2][O:3]',
         '[C:1][C:2](=[O:3])[O:4][C:5]',
-        '[C:1][C:2]=[C:3]' 
+        '[C:1]/[C:2]=[C:3]/[C:4]',
+        '[C:1]/[C:2]=[C:3]\[C:4]',
+        '[C:1]([CH2:2])[CH2:3]'
     ]
-    results = {'atom1' : [], 'atom2': []}
-    for smarts in alpha_carbon_patterns:
-        pattern_mol = Chem.MolFromSmarts(smarts)
-        matches = mol.GetSubstructMatches(pattern_mol)
-            
+    substructure_results = {'atom1': False, 'atom2': False}
+    for pattern in alpha_carbon_patterns:
+        matches = substructure_search(mol, pattern)
         for match in matches:
-            alpha_carbon_idx = match[0]
-            if alpha_carbon_idx == atom1_idx:
-                results['atom1'].append('alpha_substituted')
-            elif alpha_carbon_idx == atom2_idx:
-                results['atom2'].append('alpha_substituted')
-    return results
+            if pair[0][0] == match[0] and pair[0][0] in mmatch1:
+                substructure_results.update({
+                    'atom1': True
+                })
+            if pair[1][0] == match[0] and pair[1][0] in mmatch1:
+                substructure_results.update({
+                    'atom2': True
+                })
+    return substructure_results
 
-def check_hydroxyl_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
-    """
-    Check if a carbon is hydroxyl substituted
-    """
-    hydroxyl_carbon_pattern = '[C:1][OH:2]'
-    results = {'atom1' : [], 'atom2': []}
-    pattern_mol = Chem.MolFromSmarts(hydroxyl_carbon_pattern)
-    matches = mol.GetSubstructMatches(pattern_mol)
+def check_beta_carbon_mismatch(mol: Chem.Mol, pair: tuple, mmatch1: list) -> dict:
+    beta_carbon_patterns = [
+        '[C:1][OH:2]',
+        '[C:1][O:2][C:3](=[O:4])'
+    ]
+    substructure_results = {'atom1': False, 'atom2': False}
+    for pattern in beta_carbon_patterns:
+        matches = substructure_search(mol, pattern)
+        for match in matches:
+            if pair[0][0] == match[0] and pair[0][0] in mmatch1:
+                substructure_results.update({
+                    'atom1': True
+                })
+            if pair[1][0] == match[0] and pair[1][0] in mmatch1:
+                substructure_results.update({
+                    'atom2': True
+                })
+    return substructure_results
+
+def check_alkene_mismatch(mol: Chem.Mol, pair: tuple, alkene_mmatch1: list) -> dict:
+    alkene_pattern = '[C:1]=[C:2]'
+    substructure_results = {'atom1': False, 'atom2': False}
+    matches = substructure_search(mol, alkene_pattern)
     for match in matches:
-        hydroxyl_carbon_idx = match[0]
-        if hydroxyl_carbon_idx == atom1_idx:
-            results['atom1'].append('hydroxyl_substituted')
-        elif hydroxyl_carbon_idx == atom2_idx:
-            results['atom2'].append('hydroxyl_substituted')
-    return results
+        if pair[0][0] == match[0] and pair[0][0] in alkene_mmatch1:
+            substructure_results.update({
+                'atom1': True
+            })
+        if pair[1][0] == match[0] and pair[1][0] in alkene_mmatch1:
+            substructure_results.update({
+                'atom2': True
+            })
+    return substructure_results
 
-def check_ester_substituted(mol: Chem.Mol, atom1_idx: int, atom2_idx: int):
-    """
-    Check if a carbon is ester substituted
-    """
-    ester_oxygen_pattern = '[C:1](=[O:2])[O:3][C:4]'
-    results = {'atom1' : [], 'atom2': []}
-    pattern_mol = Chem.MolFromSmarts(ester_oxygen_pattern)
-    matches = mol.GetSubstructMatches(pattern_mol)
-    for match in matches:
-        ester_carbon_idx = match[3]
-        if ester_carbon_idx == atom1_idx:
-            results['atom1'].append('ester_substituted')
-        elif ester_carbon_idx == atom2_idx:
-            results['atom2'].append('ester_substituted')
-    return results
-
-def check_substituent_patterns(mol: Chem.Mol, mismatch_pairs: list) -> list:
-    """
-    Check substituent patterns for each pair including one
-    or more mismatched chiral centers
-    """
-    results = []
-    for atom1_idx, module1, atom2_idx, module2 in mismatch_pairs:
+def check_cc_mismatch_cases(mol: Chem.Mol, cc_mismatch_pairs: list, cc_mmatch1: list) -> list:
+    cc_mismatch_results = []
+    for pair in cc_mismatch_pairs:
         pair_info = {
-            'atom1_idx': atom1_idx,
-            'module1': module1,
-            'atom2_idx': atom2_idx,
-            'module2': module2,
-            'atom1_patterns': [],
-            'atom2_patterns': []
-    }
-        # Check alpha carbon patterns
-        alpha_results = check_alpha_carbon(mol, atom1_idx, atom2_idx)
-        pair_info['atom1_patterns'].extend(alpha_results['atom1'])
-        pair_info['atom2_patterns'].extend(alpha_results['atom2'])
-        
-        # Check hydroxyl substituted carbon pattern
-        hydroxyl_results = check_hydroxyl_substituted(mol, atom1_idx, atom2_idx)
-        pair_info['atom1_patterns'].extend(hydroxyl_results['atom1'])
-        pair_info['atom2_patterns'].extend(hydroxyl_results['atom2'])
-        
-        # Check ester pattern
-        ester_results = check_ester_substituted(mol, atom1_idx, atom2_idx)
-        pair_info['atom1_patterns'].extend(ester_results['atom1'])
-        pair_info['atom2_patterns'].extend(ester_results['atom2'])
-
-        results.append(pair_info)
-    return results
-
-def identify_module_to_edit(mismatched_module: str, is_hydroxyl: bool, is_ester: bool) -> int:
-    """
-    Identify which module to perform a KR swap on
-    """
-    if mismatched_module == 'LM':
-        target_module =  1
-    if mismatched_module.startswith('M'):
-        target_module = int(mismatched_module[1:])
-        if is_hydroxyl or is_ester:
-            target_module += 1
-    return target_module
-
-def check_atoms_to_process(results: list, mmatch1: list) -> list:
-    """
-    Identify which atoms correspond to modules needing a KR swap
-    """
-    atoms_to_process = []
-    for pair in results:
-        atom1_idx = pair['atom1_idx']
-        module1 = pair['module1']
-        atom2_idx = pair['atom2_idx']
-        module2 = pair['module2']
-        
-        if atom1_idx in mmatch1:
-            atoms_to_process.append({
-                'atom': atom1_idx,
-                'module': module1,
-                'patterns': pair['atom1_patterns'],
+            'c_idx_i': pair[0][0],
+            'module_i': pair[0][1],
+            'c_idx_i+1': pair[1][0],
+            'module_i+1': pair[1][1],
+            'alpha_mismatch' : False,
+            'beta_mismatch' : False,
+            }
+        alpha_results = check_alpha_carbon_mismatch(mol, pair, cc_mmatch1)
+        beta_results = check_beta_carbon_mismatch(mol, pair, cc_mmatch1)
+        if (alpha_results['atom1'] is True) or (alpha_results['atom2'] is True):
+            pair_info.update({
+                'alpha_mismatch': True
             })
-        if atom2_idx in mmatch1:
-            atoms_to_process.append({
-                'atom': atom2_idx,
-                'module': module2,
-                'patterns': pair['atom2_patterns'],
+        if (beta_results['atom1'] is True) or (beta_results['atom2'] is True):
+            pair_info.update({
+                'beta_mismatch': True
             })
-    return atoms_to_process
+        cc_mismatch_results.append(pair_info)
+    return cc_mismatch_results
 
-def determine_best_kr_type(pks_features: dict, target_module_number: int,
-                           old_kr_type: str, flags: PatternFlags):
-    """
-    Apply logic for identifying the correct KR type
-    """
-    substrate = pks_features['Substrate'][target_module_number]
+def check_alkene_mismatch_cases(mol: Chem.Mol, alkene_mismatch_pairs: list, alkene_mmatch1: list) -> list:
+    alkene_mismatch_results = []
+    for pair in alkene_mismatch_pairs:
+        pair_info = {
+            'c_idx_i': pair[0][0],
+            'module_i': pair[0][1],
+            'c_idx_i+1': pair[1][0],
+            'module_i+1': pair[1][1],
+            'alkene_mismatch': False
+        }
+        alkene_results = check_alkene_mismatch(mol, pair, alkene_mmatch1)
+        if (alkene_results['atom1'] is True) or (alkene_results['atom2'] is True):
+            pair_info.update({
+                'alkene_mismatch': True
+            })
+        alkene_mismatch_results.append(pair_info)
+    return alkene_mismatch_results
+
+# Employ reductive loop swaps functions
+def kr_type_logic(pks_features: dict, target_mod: int, alpha: bool, beta: bool) -> str:
+    old_kr_type = pks_features['KR Type'][target_mod]
+    substrate = pks_features['Substrate'][target_mod]
     new_kr_type = None
-    # Simple case: Malonyl-CoA with no DH
-    if (substrate == "Malonyl-CoA" and 
-        pks_features['DH'][target_module_number] is False):
+    # Single cases
+    if (substrate == 'Malonyl-CoA' and pks_features['ER Type'][target_mod] == 'None'):
         if old_kr_type == 'A':
             new_kr_type = 'B'
         else:
             new_kr_type = 'A'
-    elif (substrate == "Malonyl-CoA" and 
-        pks_features['DH'][target_module_number] is True):
+        print('    Case 1: No alpha substituent. Only beta is wrong -> swapping letter only')
+    elif (substrate == 'Malonyl-CoA' and pks_features['ER Type'][target_mod] != 'None'):
         new_kr_type = 'B'
-    elif (substrate != "Malonyl-CoA" and 
-        pks_features['DH'][target_module_number] is True):
+    elif (substrate == 'Methylmalonyl-CoA' and pks_features['DH Type'][target_mod] != 'None'):
         new_kr_type = 'B1'
     # Complex cases
     elif old_kr_type is None:
-        if flags.is_alpha:
-            new_kr_type = 'C1'
-            print("  Case 1: Adding KR type C1 to perform epimerization of alpha chiral center")
+        if alpha:
+            new_kr_type = 'C2'
+            print('    Case 5: Adding KR type C2 to perform epimerization of the alpha chiral center')
         else:
-            print("  No KR domain and not alpha carbon - cannot fix by KR swap")
+            print('    No KR domain and not an alpha carbon mismatch -> cannot fix by KR swap')
     else:
-        # Parse existing KR type (e.g., 'A1' -> letter='A', number='1')
         letter = old_kr_type[0]
         number = old_kr_type[1:] if len(old_kr_type) >= 2 else '1'
-        if flags.is_alpha and (flags.is_hydroxyl or flags.is_ester):
+        if alpha and beta:
             new_letter = 'B' if letter == 'A' else 'A'
             new_number = '2' if number == '1' else '1'
             new_kr_type = new_letter + new_number
-            print("  Case 2: Both patterns wrong - swapping both letter and number")
-        elif flags.is_alpha and not (flags.is_hydroxyl or flags.is_ester):
+            print('    Case 4: Both are wrong -> swapping both letter and number')
+        elif alpha and not beta:
             new_number = '2' if number == '1' else '1'
             new_kr_type = letter + new_number
-            print("  Case 3: Alpha wrong, Beta right - swapping number only")
-        elif not flags.is_alpha and (flags.is_hydroxyl or flags.is_ester):
+            print('    Case 3: Only alpha is wrong -> swapping number only')
+        elif not alpha and beta:
             new_letter = 'B' if letter == 'A' else 'A'
             new_kr_type = new_letter + number
-            print("  Case 4: Alpha right, Beta wrong - swapping letter only")
+            print('    Case 2: Only beta is wrong -> swapping letter only')
         else:
             new_kr_type = old_kr_type
-            print("  No patterns matched - returning original KR type")
+            print('    No case found -> returning the original KR type')
     return new_kr_type
 
-def process_atom_info(atom_info: dict, pks_features: dict):
+def er_type_logic(pks_features: dict, target_mod: int) -> str:
+    old_er_type = pks_features['ER Type'][target_mod]
+    new_er_type = None
+    substrate = pks_features['Substrate'][target_mod]
+    if substrate != 'Malonyl-CoA':
+        new_er_type = 'D' if old_er_type == 'L' else 'L'
+        print('   Case 7: Swapping ER subtype')
+    else:
+        return old_er_type # ER subtype can be ignored as malonyl-CoA has no alpha chiral center
+    return new_er_type
+
+def kr_dh_type_logic(pks_features: dict, target_mod: int) -> str:
+    old_dh_type = pks_features['DH Type'][target_mod]
+    new_kr_type, new_dh_type = None, None
+    substrate = pks_features['Substrate'][target_mod]
+    if substrate != 'Malonyl-CoA':
+        new_kr_type, new_dh_type = 'B1', 'E'
+    else:
+        print('    Case 6: Swapping DH-KR subtypes')
+        if old_dh_type == 'Z':
+            new_kr_type, new_dh_type = 'B', 'E'
+        else:
+            new_kr_type, new_dh_type = 'A', 'Z'
+    return new_kr_type, new_dh_type
+
+def identify_kr_swap_case(pks_features: dict, result: dict):
     """
-    Assess if the mismatched chiral center is alpha or beta
+    Assess if the mismatched stereocenter is alpha or beta
     Select the correct KR swap to make accordingly
     """
-    mismatched_atom = atom_info['atom']
-    mismatched_module = atom_info['module']
-    mismatched_patterns = atom_info['patterns']
-    is_alpha = 'alpha_substituted' in mismatched_patterns
-    is_hydroxyl = 'hydroxyl_substituted' in mismatched_patterns
-    is_ester = 'ester_substituted' in mismatched_patterns
-    target_module_number = identify_module_to_edit(mismatched_module, is_hydroxyl, is_ester)
-    old_kr_type = pks_features['KR Type'][target_module_number]
-    print(f"------Analyzing mismatch from {mismatched_module}-------")
-    print(f"  Mismatched atom {mismatched_atom}: alpha={is_alpha}, beta={is_hydroxyl or is_ester}")
-    print(f"  Will modify KR type in module {target_module_number}")
-    new_kr_type = determine_best_kr_type(pks_features, target_module_number,
-                                         old_kr_type,
-                                         flags=PatternFlags(is_alpha=is_alpha,
-                                                            is_hydroxyl=is_hydroxyl,
-                                                            is_ester=is_ester))
-    if new_kr_type != old_kr_type:
-        pks_features['KR Type'][target_module_number] = new_kr_type
-        print(f"------Updating M{target_module_number}------")
-        print(f"Swapped KR type from {old_kr_type} to {new_kr_type}")
+    target_mod = get_mod_number(result['module_i+1'])
+    old_kr_type = pks_features['KR Type'][target_mod]
 
-def kr_swaps(pks_features: dict, results: list, mmatch1: list) -> dict:
+    print(f'----Analyzing mismatch(s) in pair ({result["c_idx_i"]}, {result["c_idx_i+1"]})----')
+    print(f'    alpha_mismatch: {result["alpha_mismatch"]}, beta_mismatch: {result["beta_mismatch"]}')
+    new_kr_type = kr_type_logic(pks_features, target_mod, alpha=result['alpha_mismatch'], beta=result['beta_mismatch'])
+    if new_kr_type != old_kr_type:
+        pks_features['KR Type'][target_mod] = new_kr_type
+        print(f'    Making KR swap in module {target_mod}: Type {old_kr_type} -> Type {new_kr_type}')
+
+def identify_er_swap_case(pks_features: dict, result: dict):
+    target_mod = get_mod_number(result['module_i+1'])
+    old_er_type = pks_features['ER Type'][target_mod]
+
+    print(f'----Analyzing mismatch(s) in pair ({result["c_idx_i"]}, {result["c_idx_i+1"]})----')
+    print(f'    alpha_mismatch: {result["alpha_mismatch"]}, beta_mismatch: {result["beta_mismatch"]}')
+    if result['alpha_mismatch'] is True:
+        new_er_type = er_type_logic(pks_features, target_mod)
+        pks_features['ER Type'][target_mod] = new_er_type
+        print(f'    Making ER swap in module {target_mod}: Type {old_er_type} -> Type {new_er_type}')
+
+def identify_dh_swap_case(pks_features: dict, result: dict):
+    target_mod = get_mod_number(result['module_i+1'])
+    old_kr_type = pks_features['KR Type'][target_mod]
+    old_dh_type = pks_features['DH Type'][target_mod]
+    
+    print(f'----Analyzing alkene mismatch(s) in pair ({result["c_idx_i"]}, {result["c_idx_i+1"]})----')
+    print(f'    alkene mismatch: {result["alkene_mismatch"]}')
+    new_kr_type, new_dh_type = kr_dh_type_logic(pks_features, target_mod)
+    pks_features['KR Type'][target_mod] = new_kr_type
+    pks_features['DH Type'][target_mod] = new_dh_type
+    print(f'    Making DH-KR swap in module {target_mod}: {old_dh_type}-{old_kr_type} -> {new_dh_type}-{new_kr_type}')
+
+def kr_swaps(pks_features: dict, mismatch_results: list) -> dict:
     """
     Update KR types based on chiral mismatches and their structural patterns
     """
-    atoms = check_atoms_to_process(results, mmatch1)
-    for atom_info in atoms:
-        process_atom_info(atom_info, pks_features)
+    for result in mismatch_results:
+        identify_kr_swap_case(pks_features, result)
     return pks_features
 
-def new_design(pks_features:dict) -> Chem.Mol:
+def er_swaps(pks_features: dict, mismatch_results: list) -> dict:
+    """
+    Update ER types based on remaining chiral mismatches and their structural patterns
+    """
+    for result in mismatch_results:
+        identify_er_swap_case(pks_features, result)
+    return pks_features
+
+def dh_swaps(pks_features: dict, mismatch_results: list) -> dict:
+    """
+    Update DH types based on alkene mismatches and their structural patterns
+    """
+    for result in mismatch_results:
+        identify_dh_swap_case(pks_features, result)
+    return pks_features
+
+def new_pks_design(pks_features: dict) -> Chem.Mol:
     """
     Reconstruct PKS design based on updated KR types
 
     Returns:
         pks_product (Chem.Mol): The final PKS product after stereocorrections
     """
-    modules = []
+    new_pks_design = []
     for idx, substrate in enumerate(pks_features['Substrate']):
         substrate = pks_features['Substrate'][idx]
         if idx == 0:
             domains_dict = OrderedDict({bcs.AT: bcs.AT(active=True, substrate=substrate)})
             module = bcs.Module(domains=domains_dict, loading=True)
-            modules.append(module)
+            new_pks_design.append(module)
         else:
             at = bcs.AT(active=True, substrate=substrate)
             domains_dict = OrderedDict({bcs.AT: at})
-            if pks_features['KR Type'][idx] is not None:
+            if pks_features['KR Type'][idx] != 'None':
                 domains_dict.update({bcs.KR: bcs.KR(active=True,
                                                     type=pks_features['KR Type'][idx])})
-            if pks_features['DH'][idx]:
-                domains_dict.update({bcs.DH: bcs.DH(active=True)})
-            if pks_features['ER'][idx]:
-                domains_dict.update({bcs.ER: bcs.ER(active=True)})
+            if pks_features['DH Type'][idx] != 'None':
+                domains_dict.update({bcs.DH: bcs.DH(active=True,
+                                                    type=pks_features['DH Type'][idx])})
+            if pks_features['ER Type'][idx] != 'None':
+                domains_dict.update({bcs.ER: bcs.ER(active=True, type=pks_features['ER Type'][idx])})
             module = bcs.Module(domains=domains_dict, loading=False)
-            modules.append(module)
-    cluster_f = bcs.Cluster(modules=modules)
-    pks_product = cluster_f.computeProduct(structureDB)
-    return pks_product, modules
+            new_pks_design.append(module)
+    cluster_f = bcs.Cluster(modules=new_pks_design)
+    new_pks_product = cluster_f.computeProduct(structureDB)
+    return new_pks_product, new_pks_design
 
-def apply_kr_swaps(unbound_product, full_mapping_df, mmatch1, pks_features):
-    """
-    Parse pairs of backbone carbons mapped to sequential modules and
-    apply KR swaps
-    """
-    pairs = find_adjacent_backbone_carbon_pairs(unbound_product, full_mapping_df)
-    sequential_pairs = filter_sequential_module_pairs(pairs)
-    pairs_with_mismatches = report_pairs_with_chiral_mismatches(sequential_pairs, mmatch1)
-    pattern_results = check_substituent_patterns(unbound_product, pairs_with_mismatches)
-    pks_features_updated = kr_swaps(pks_features, pattern_results, mmatch1)
-    return pks_features_updated
+def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.DataFrame, chiral_result: ChiralCheckResult,
+                      alkene_result: AlkeneCheckResult, pks_features: dict,):
+    pairs = extract_carbon_pairs(unbound_mol, full_map)
+    cc_mismatch_pairs = identify_pairs_with_mismatches(pairs, chiral_result.mmatch1)
+    cc_mismatch_results = check_cc_mismatch_cases(unbound_mol, cc_mismatch_pairs, chiral_result.mmatch1)
+    print('Correcting R/S stereochemistry')
+    pks_features_updated = kr_swaps(pks_features, cc_mismatch_results)
 
-def check_swaps_accuracy(match, mmatch):
+    alkene_mismatch_pairs = identify_pairs_with_mismatches(pairs, alkene_result.mmatch1)
+    alkene_mismatch_results = check_alkene_mismatch_cases(unbound_mol, alkene_mismatch_pairs, alkene_result.mmatch1)
+    print('Correcting E/Z stereochemistry')
+    pks_features_updated = dh_swaps(pks_features_updated, alkene_mismatch_results)
+
+    new_pks_product, new_design = new_pks_design(pks_features_updated)
+    unbound_mol_f, target_mol_f, chiral_results_f, alkene_results_f, full_mapped_df_f = preprocessing(new_pks_design, target_mol)  
+    if chiral_results_f.mmatch1:
+        pairs = extract_carbon_pairs(unbound_mol_f, full_mapped_df_f)
+        cc_mismatch_pairs = identify_pairs_with_mismatches(pairs, chiral_results_f.mmatch1)
+        cc_mismatch_results = check_cc_mismatch_cases(unbound_mol_f, cc_mismatch_pairs, chiral_results_f.mmatch1)
+        print('Correcting remianing R/S mismatches')
+        pks_features_updated = er_swaps(pks_features_updated, cc_mismatch_results)
+        return new_pks_design(pks_features_updated)
+    return new_pks_product, new_design
+
+# Post processing functions
+def add_atom_labels(mol: Chem.Mol, chiral_centers: dict) -> Chem.Mol:
+    for atom in mol.GetAtoms():
+        atom_idx = atom.GetIdx()
+        atom_label = f'{atom.GetSymbol()}:{atom_idx}'
+        if atom_idx in chiral_centers:
+            cip_label = f'{atom_label} ({chiral_centers[atom_idx]})'
+        else:
+            cip_label = atom_label
+        atom.SetProp('atomNote', cip_label)
+    return mol
+
+def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_result, alkene_result):
     """
-    Assess stereochemistry correspondence post implementing KR Swaps
+    Visualize stereochemistry correspondence between two molecules
     """
-    if (len(match) + len(mmatch)) > 0:
-        swaps_score = len(match)/(len(match)+len(mmatch))
-    else:
-        swaps_score = None
-    return swaps_score
+    add_atom_labels(mol1, chiral_result.cc1)
+    add_atom_labels(mol2, chiral_result.cc2)
+
+    highlight_1 = {}
+    highlight_2 = {}
+ 
+    for atom_idx in chiral_result.match1:
+        highlight_1[atom_idx] = (0, 1, 1)
+    for atom_idx in chiral_result.match2:
+        highlight_2[atom_idx] = (0, 1, 1)
+    for atom_idx in chiral_result.mmatch1:
+        highlight_1[atom_idx] = (1, 0, 0)
+    for atom_idx in chiral_result.mmatch2:
+        highlight_2[atom_idx] = (1, 0, 0)
+    for atom_idx in alkene_result.match1:
+        highlight_1[atom_idx] = (0, 1, 1)
+    for atom_idx in alkene_result.match2:
+        highlight_2[atom_idx] = (0, 1, 1)
+    for atom_idx in alkene_result.mmatch1:
+        highlight_1[atom_idx] = (1, 0, 0)
+    for atom_idx in alkene_result.mmatch2:
+        highlight_2[atom_idx] = (1, 0, 0)
+
+ 
+    all_1 = chiral_result.match1 + chiral_result.mmatch1 + alkene_result.match1 + alkene_result.mmatch1
+    all_2 = chiral_result.match2 + chiral_result.mmatch2 + alkene_result.match2 + alkene_result.mmatch2
+    all_bonds_1 = set(alkene_result.match1 + alkene_result.mmatch1)
+    all_bonds_2 = set(alkene_result.match2 + alkene_result.mmatch2)
+
+    bond_indices_1 = [bond.GetIdx() for bond in mol1.GetBonds()
+                      if bond.GetBeginAtomIdx() in all_bonds_1
+                      and bond.GetEndAtomIdx() in all_bonds_1]
+    bond_indices_2 = [bond.GetIdx() for bond in mol2.GetBonds()
+                      if bond.GetBeginAtomIdx() in all_bonds_2
+                      and bond.GetEndAtomIdx() in all_bonds_2]
+    
+    AllChem.Compute2DCoords(mol1)
+    AllChem.GenerateDepictionMatching2DStructure(mol2, mol1, acceptFailure=True)
+
+    return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
+                                molsPerRow=2, highlightAtomLists=[all_1, all_2],
+                                highlightAtomColors=[highlight_1, highlight_2],
+                                highlightBondLists=[bond_indices_1, bond_indices_2], 
+                                useSVG=True, 
+                                subImgSize=(500, 400))
