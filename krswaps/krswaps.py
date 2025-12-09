@@ -591,12 +591,13 @@ def check_alkene_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, alkene_mmatch
         alkene_mismatch_results.append(pair_info)
     return alkene_mismatch_results
 
-def get_cc_mismatch_results(mol1: Chem.Mol, mol2: Chem.Mol, full_map: pd.DataFrame, cc_result):
+def get_cc_mismatch_results(mol1: Chem.Mol, full_map: pd.DataFrame, cc_result: ChiralCheckResult) -> tuple[list, list]:
     pairs = extract_carbon_pairs(mol1, full_map)
+    type_u_mods = address_undefined_stereo(pairs, cc_result, full_map)
     mismatch_results = check_cc_mismatch_cases(mol1, pairs, cc_result.mmatch1)
-    return mismatch_results
+    return mismatch_results, type_u_mods
 
-def get_alkene_mismatch_results(mol1: Chem.Mol, mol2: Chem.Mol, full_map: pd.DataFrame, alkene_result):
+def get_alkene_mismatch_results(mol1: Chem.Mol, full_map: pd.DataFrame, alkene_result):
     pairs = extract_carbon_pairs(mol1, full_map)
     mismatch_results = check_alkene_mismatch_cases(mol1, pairs, alkene_result.mmatch1)
     return mismatch_results
@@ -688,6 +689,7 @@ def identify_kr_swap_case(pks_features: dict, result: dict):
     if new_kr_type != old_kr_type:
         pks_features['KR Type'][target_mod] = new_kr_type
         print(f'    Making KR swap in module {target_mod}: Type {old_kr_type} -> Type {new_kr_type}')
+    return pks_features
 
 def identify_er_swap_case(pks_features: dict, result: dict):
     target_mod = get_mod_number(result['module_i+1'])
@@ -699,6 +701,7 @@ def identify_er_swap_case(pks_features: dict, result: dict):
         new_er_type = er_type_logic(pks_features, target_mod)
         pks_features['ER Type'][target_mod] = new_er_type
         print(f'    Making ER swap in module {target_mod}: Type {old_er_type} -> Type {new_er_type}')
+    return pks_features
 
 def identify_dh_swap_case(pks_features: dict, result: dict):
     target_mod = get_mod_number(result['module_i+1'])
@@ -711,6 +714,7 @@ def identify_dh_swap_case(pks_features: dict, result: dict):
     pks_features['KR Type'][target_mod] = new_kr_type
     pks_features['DH Type'][target_mod] = new_dh_type
     print(f'    Making DH-KR swap in module {target_mod}: {old_dh_type}-{old_kr_type} -> {new_dh_type}-{new_kr_type}')
+    return pks_features
 
 def kr_swaps(pks_features: dict, mismatch_results: list) -> dict:
     """
@@ -767,31 +771,73 @@ def new_pks_design(pks_features: dict) -> tuple[Chem.Mol, list]:
     new_pks_product = cluster_f.computeProduct(structureDB)
     return new_pks_product, new_pks_design
 
+def address_undefined_stereo(pairs: list, chiral_result: ChiralCheckResult, full_map: pd.DataFrame) -> set:
+    undefined_cc_mods = set([])
+    for idx, cip in chiral_result.cc2.items():
+        if cip == '?':
+            product_idx = full_map.loc[full_map['Target Atom Idx'] == idx, 'Product Atom Idx'].values[0]
+            for pair in pairs:
+                if pair[0][0] == product_idx or pair[1][0] == product_idx:
+                    m_i = get_mod_number(pair[0][1])
+                    m_i_1 = get_mod_number(pair[1][1])
+                    undefined_cc_mods.add(m_i if m_i > m_i_1 else m_i_1)
+    return undefined_cc_mods
+
+def insert_unknown_types(pks_features: dict, type_u_modules: set) -> dict:
+    """
+    """
+    for mod_idx in type_u_modules:
+        pks_features['KR Type'][mod_idx] = 'U'
+    return pks_features
+
+def parse_final_design(pks_design_features: dict) -> list:
+    parsed_design = []
+    for idx in pks_design_features['Module']:
+        reductive_loop = str('')
+        if pks_design_features['ER Type'][idx] != 'None':
+            reductive_loop += (f'DH({pks_design_features["DH Type"][idx]})')
+            reductive_loop += (f'-ER({pks_design_features["ER Type"][idx]})')
+            reductive_loop += (f'-KR({pks_design_features["KR Type"][idx]})')
+        elif pks_design_features['DH Type'][idx] != 'None':
+            reductive_loop += (f'DH({pks_design_features["DH Type"][idx]})')
+            reductive_loop += (f'-KR({pks_design_features["KR Type"][idx]})')
+        elif pks_design_features['KR Type'][idx] != 'None':
+            reductive_loop += (f'KR({pks_design_features["KR Type"][idx]})')
+        else:
+            reductive_loop = None
+        entry = [f'M{idx}', f'Substrate: {pks_design_features["Substrate"][idx]}', f'Reductive Loop: {reductive_loop}']
+        parsed_design.append(entry)
+    return parsed_design
+
 CorrectionResult = namedtuple('CorrectionResult',
                                 ['pks_product', 'pks_design', 'target', 'mapping', 'chiral_result', 'alkene_result'])
 
-def postprocessing(pks_features_updated: dict, target_mol: Chem.Mol, offload_mech: str):
+def postprocessing(pks_features_updated: dict, target_mol: Chem.Mol, offload_mech: str, type_u_mods: set) -> CorrectionResult:
     new_design = new_pks_design(pks_features_updated)[1]
+    new_design_features = get_design_features(new_design)
+    if type_u_mods:
+        new_design_features = insert_unknown_types(new_design_features, type_u_mods)
+    design_result = parse_final_design(new_design_features)
     mapped_product = module_map_product(new_design)
     new_pks_product = te_offload(mapped_product, target_mol, offload_mech)[0]
     pp_result = preprocessing(pks_features_updated, new_pks_product, target_mol)
-    return CorrectionResult(pp_result.unbound_mol, new_design, pp_result.target_mol, pp_result.mapping, pp_result.chiral_result, pp_result.alkene_result)
+    return CorrectionResult(pp_result.unbound_mol, design_result, pp_result.target_mol, pp_result.mapping, pp_result.chiral_result, pp_result.alkene_result)
 
 def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.DataFrame, pks_features: dict, offload_mech: str, chiral_result, alkene_result):
     print('Correcting R/S stereochemistry')
-    cc_mismatch_results = get_cc_mismatch_results(unbound_mol, target_mol, full_map, chiral_result)
+    cc_mismatch_results, type_u_mods = get_cc_mismatch_results(unbound_mol, full_map, chiral_result)
     pks_features_updated = kr_swaps(pks_features, cc_mismatch_results)
 
     print('Correcting E/Z stereochemistry')
-    alkene_mismatch_results = get_alkene_mismatch_results(unbound_mol, target_mol, full_map, alkene_result)
+    alkene_mismatch_results = get_alkene_mismatch_results(unbound_mol, full_map, alkene_result)
     pks_features_updated = dh_swaps(pks_features_updated, alkene_mismatch_results)
 
-    krs_result = postprocessing(pks_features_updated, target_mol, offload_mech)
+    krs_result = postprocessing(pks_features_updated, target_mol, offload_mech, type_u_mods)
     if krs_result.chiral_result.mmatch1:
         print('Correcting remianing R/S mismatches')
-        cc_mismatch_results_f = get_cc_mismatch_results(krs_result.pks_product, krs_result.target, krs_result.mapping, krs_result.chiral_result)
+        cc_mismatch_results_f, type_u_mods = get_cc_mismatch_results(krs_result.pks_product, krs_result.mapping, krs_result.chiral_result)
         pks_features_updated = er_swaps(pks_features_updated, cc_mismatch_results_f)
-        return postprocessing(pks_features_updated, target_mol, offload_mech)
+        return postprocessing(pks_features_updated, target_mol, offload_mech, type_u_mods)
     return krs_result
 
 # Post processing functions
@@ -858,7 +904,8 @@ def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_resul
 
 def compute_jaccard_sim(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     """
-    Compute the Jaccard similarity between two molecules
+    Compute the Jaccard similarity between two molecules.
+    Uses MAP4C fingerprints: Min-hashed Atom Pair Chiral Fingerprints (https://github.com/reymond-group/mapchiral)
     """
     mol1 = Chem.MolFromSmiles(Chem.MolToSmiles(mol1))
     mol2 = Chem.MolFromSmiles(Chem.MolToSmiles(mol2))
@@ -883,7 +930,7 @@ def krswaps_stereo_correction(target_smi: str, stereo: str, offload_mech: str):
     return {
         'stereo_before': visualize_stereo_correspondence(pp_result.unbound_mol, pp_result.target_mol, pp_result.chiral_result, pp_result.alkene_result),
         'stereo_after': visualize_stereo_correspondence(krs_result.pks_product, krs_result.target, krs_result.chiral_result, krs_result.alkene_result),
-        'final_pks_design': str(krs_result.pks_design),
+        'final_pks_design': krs_result.pks_design,
         'target_molecule': Chem.MolToSmiles(target_mol),
         'target_pks_precursor': Chem.MolToSmiles(pks_target_mol),
         'final_pks_product': Chem.MolToSmiles(krs_result.pks_product),
