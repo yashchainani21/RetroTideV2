@@ -446,14 +446,18 @@ def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map:
 ProcessingResult = namedtuple('ProcessingResult',
                               ['unbound_mol', 'target_mol', 'mapping', 'chiral_result', 'alkene_result'])
 
-def preprocessing(pks_features: dict, unbound_mol: Chem.Mol, target: Chem.Mol):
+def preprocessing(pks_features: dict, unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> ProcessingResult:
     module_mapped_df = module_map(unbound_mol)
-    atom_mapped_df = atom_map(unbound_mol, target)
+    atom_mapped_df = atom_map(unbound_mol, target_mol)
     full_mapped_df = full_map(atom_mapped_df, module_mapped_df)
     lactone_atoms = get_lactone_atoms(unbound_mol)
-    target_lactone_atoms = find_target_lactone(unbound_mol, full_mapped_df)
-    unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms, full_mapped_df, pks_features)
-    target_mol = force_target_lactone_alkene(target, target_lactone_atoms)
+    if lactone_atoms:
+        target_lactone_atoms = find_target_lactone(unbound_mol, full_mapped_df)
+        unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms, full_mapped_df, pks_features)
+        target_mol = force_target_lactone_alkene(target_mol, target_lactone_atoms)
+    else:
+        Chem.AssignStereochemistry(unbound_mol, force=True, cleanIt=True)
+        Chem.AssignStereochemistry(target_mol, force=True, cleanIt=True)
     chiral_result = get_rs_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
     alkene_result = get_ez_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
     return ProcessingResult(unbound_mol, target_mol, full_mapped_df, chiral_result, alkene_result)

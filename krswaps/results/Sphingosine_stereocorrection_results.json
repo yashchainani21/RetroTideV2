@@ -1,0 +1,9 @@
+{
+  "Target Molecule": "CCCCCCCCCCCCC/C=C/[C@@H](O)[C@@H](N)CO",
+  "Target PKS Precursor": "CCCCCCCCCCCC/C=C/[C@@H](O)CCO",
+  "Final PKS Design": "[[\"AT{'substrate': 'Methylmalonyl-CoA'}\", 'loading: True'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", 'loading: False']]",
+  "Final PKS Product": "CCCCCCCCCCCC/C=C/[C@@H](O)CC(=O)O",
+  "MCS Similarity": 0.8636363636363636,
+  "Initial Jaccard Similarity": 0.30859375,
+  "Final Jaccard Similarity": 0.31103515625
+}
