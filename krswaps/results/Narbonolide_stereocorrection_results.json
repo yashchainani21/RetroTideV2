@@ -1,9 +1,45 @@
 {
   "Target Molecule": "CC[C@H]1OC(=O)[C@H](C)C(=O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)/C=C/[C@H]1C",
   "Target PKS Precursor": "CC[C@H]1OC(=O)[C@H](C)C(=O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)/C=C/[C@H]1C",
-  "Final PKS Design": "[[\"AT{'substrate': 'prop'}\", 'loading: True'], [\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B2'}\", 'loading: False'], [\"AT{'substrate': 'Malonyl-CoA'}\", \"KR{'type': 'B'}\", \"DH{'type': 'E'}\", 'loading: False'], [\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C1'}\", 'loading: False'], [\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'B1'}\", \"DH{'type': 'E'}\", \"ER{'type': 'L'}\", 'loading: False'], [\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'A1'}\", 'loading: False'], [\"AT{'substrate': 'Methylmalonyl-CoA'}\", \"KR{'type': 'C2'}\", 'loading: False']]",
+  "Final PKS Design": [
+    [
+      "M0",
+      "AT Substrate: prop",
+      "Reductive Loop: None"
+    ],
+    [
+      "M1",
+      "AT Substrate: Methylmalonyl-CoA",
+      "Reductive Loop: KR(B2)"
+    ],
+    [
+      "M2",
+      "AT Substrate: Malonyl-CoA",
+      "Reductive Loop: DH(E)-KR(B)"
+    ],
+    [
+      "M3",
+      "AT Substrate: Methylmalonyl-CoA",
+      "Reductive Loop: KR(C1)"
+    ],
+    [
+      "M4",
+      "AT Substrate: Methylmalonyl-CoA",
+      "Reductive Loop: DH(E)-ER(L)-KR(B1)"
+    ],
+    [
+      "M5",
+      "AT Substrate: Methylmalonyl-CoA",
+      "Reductive Loop: KR(A1)"
+    ],
+    [
+      "M6",
+      "AT Substrate: Methylmalonyl-CoA",
+      "Reductive Loop: KR(C2)"
+    ]
+  ],
   "Final PKS Product": "CC[C@H]1OC(=O)[C@H](C)C(=O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)/C=C/[C@H]1C",
   "MCS Similarity": 1.0,
-  "Initial Jaccard Similarity": 0.60498046875,
+  "Initial Jaccard Similarity": 0.5546875,
   "Final Jaccard Similarity": 1.0
 }

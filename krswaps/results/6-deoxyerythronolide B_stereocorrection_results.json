@@ -4,42 +4,42 @@
   "Final PKS Design": [
     [
       "M0",
-      "Substrate: prop",
+      "AT Substrate: prop",
       "Reductive Loop: None"
     ],
     [
       "M1",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: KR(B2)"
     ],
     [
       "M2",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: KR(A1)"
     ],
     [
       "M3",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: KR(C1)"
     ],
     [
       "M4",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: DH(E)-ER(L)-KR(B1)"
     ],
     [
       "M5",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: KR(A1)"
     ],
     [
       "M6",
-      "Substrate: Methylmalonyl-CoA",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: KR(A1)"
     ]
   ],
   "Final PKS Product": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@H]1C",
   "MCS Similarity": 1.0,
-  "Initial Jaccard Similarity": 0.658203125,
+  "Initial Jaccard Similarity": 0.58251953125,
   "Final Jaccard Similarity": 1.0
 }
