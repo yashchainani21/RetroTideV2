@@ -14,6 +14,15 @@ from retrotide import structureDB, designPKS, compareToTarget
 
 # Helper functions
 def mcs_search(mol_1: Chem.Mol, mol_2: Chem.Mol, chiral: bool) -> tuple[int, str]:
+    """
+    Performs a maximum common substructure search between two molecules
+    Args:
+        mol_1, mol2 (Chem.Mol): RDKit mol objects to compare
+        chiral (bool): determines whether stereochemistry is considered
+    Returns:
+        atom_ct (int): MCS atom count
+        smarts (str): MCS SMARTS string
+    """
     mcs = rdFMCS.FindMCS(
         [mol_1, mol_2],
         timeout=10,
@@ -26,9 +35,14 @@ def mcs_search(mol_1: Chem.Mol, mol_2: Chem.Mol, chiral: bool) -> tuple[int, str
     smarts = Chem.MolFromSmarts(mcs.smartsString)
     return atom_ct, smarts
 
-def substructure_search(mol: Chem.Mol, pattern: str):
+def substructure_search(mol: Chem.Mol, pattern: str) -> tuple:
     """
-    Identify substructure matches
+    Identify substructure matches for a given molecule
+    Args:
+        mol (Chem.Mol): query molecule
+        pattern (str): SMARTS search pattern
+    Returns:
+        matches (tuple): atom indices of substructure matches
     """
     pattern_mol = Chem.MolFromSmarts(pattern)
     matches = mol.GetSubstructMatches(pattern_mol)
@@ -37,6 +51,12 @@ def substructure_search(mol: Chem.Mol, pattern: str):
 def lactone_size(mol: Chem.Mol, pattern_matches: tuple) -> tuple[int, tuple]:
     """
     Identify the size of the largest lactone in the target molecule
+    Args:
+        mol (Chem.Mol): query molecule
+        pattern_matches (tuple): atom indices of ester substructure matches
+    Returns:
+        lactone_size (int): number of bonds in the largest lactone ring
+        ring (tuple): atom indices of the lactone ring
     """
     ring_info = mol.GetRingInfo()
     lactone_sizes = []
@@ -51,25 +71,30 @@ def lactone_size(mol: Chem.Mol, pattern_matches: tuple) -> tuple[int, tuple]:
     return 0, None
 
 def get_mod_number(module_label: str) -> int:
+    """
+    Parses a module label to return a module number
+    Args:
+        module_label (str): module label (e.g. 'LM', 'M1')
+    Returns:
+        module_number (int): module number (e.g. 0, 1)
+    """
     if module_label == 'LM':
         return 0
     else:
         return int(module_label.lstrip('M'))
     
 # Obtain RetroTide results functions
-def canonicalize_smiles(molecule_str: str, stereo: str) -> str:
+def canonicalize_smiles(molecule_smi: str, stereo: str) -> str:
     """
     Standardizes a SMILES string and returns its canonical form with the
     specified isomeric information.
-    
     Args:
-        molecule_str (str): The SMILES string of the target molecule
+        molecule_smi (str): The SMILES string of the target molecule
         stereo (str): The type of stereochemistry to specify
-
     Returns:
-        str: The canonicalized SMILES string
+        target (str): The canonicalized target SMILES string
     """
-    mol = Chem.MolFromSmiles(molecule_str)
+    mol = Chem.MolFromSmiles(molecule_smi)
     if stereo == 'R/S':
         target = Chem.MolToSmiles(mol, isomericSmiles=True).replace('/', '').replace('\\', '')
     elif stereo == 'E/Z':
@@ -82,18 +107,16 @@ def canonicalize_smiles(molecule_str: str, stereo: str) -> str:
         raise ValueError("Invalid stereo option. Choose from 'R/S', 'E/Z', 'none', or 'all'.")
     return target
 
-def initial_pks(target: str) -> tuple[list, Chem.Mol]:
+def initial_pks(target_smi: str) -> tuple[list, Chem.Mol]:
     """
     Computes a PKS design to synthesize the 2D structure of the target molecule
-
     Args:
         target (str): The SMILES string of the target molecule
-
     Returns:
-        pks_design: Initial RetroTide proposed PKS design
-        mol (Chem.Mol): The computed product of the PKS design
+        pks_design (list): Initial RetroTide proposed PKS design
+        mol (Chem.Mol): The computed PKS product of the PKS design
     """
-    designs = designPKS(Chem.MolFromSmiles(target),
+    designs = designPKS(Chem.MolFromSmiles(target_smi),
                         maxDesignsPerRound = 500,
                         similarity = 'mcs_without_stereo')
     pks_design = designs[-1][0][0].modules
@@ -102,15 +125,12 @@ def initial_pks(target: str) -> tuple[list, Chem.Mol]:
 
 def get_design_features(pks_design: list) -> dict:
     """
-    Constructs a dictionary containing information about the PKS design
-
+    Constructs a dictionary containing information about the PKS design.
     Args:
         pks_design (list): Initial RetroTide design
-
     Returns:
         pks_features (dict): Dictionary with information about the intial PKS design,
-        including module number, substrate, KR, DH, and ER subtypes, and whether DH
-        or ER domains are present.
+        including module number, substrate, KR, DH, and ER subtypes.
     """
     pks_features = {
         'Module': [],
@@ -139,6 +159,16 @@ def get_design_features(pks_design: list) -> dict:
     return pks_features
 
 def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> tuple:
+    """
+    Models the TE mediated offloading of a PKS product from the ACP domain.
+    For cyclization, ensures the correct lactone size is formed.
+    Args:
+        pks_product (Chem.Mol): The PKS bound product
+        mol (Chem.Mol): The target molecule
+        release_mechanism (str): 'thiolysis' or 'cyclization'
+    Returns:
+        unbound_mol (Chem.Mol, ): The unbound PKS product
+    """
     Chem.SanitizeMol(pks_product)
     thioester_pattern = '[C:1](=[O:2])[S:3]'
     thioester_matches = substructure_search(pks_product, thioester_pattern)
@@ -186,6 +216,17 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
     return (unbound_mol,)
 
 def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple[Chem.Mol, dict]:
+    """
+    Get the initial RetroTide results, offload and module map the corresponding
+    PKS product, and extract design features from the PKS design.
+    Args:
+        target (str): The SMILES string of the target molecule
+        stereo (str): The type of stereochemistry to specify
+        offload_mech (str): 'thiolysis' or 'cyclization'
+    Returns:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        pks_features (dict): PKS design informaiton
+    """
     target_smi = canonicalize_smiles(target, stereo)
     pks_design = initial_pks(target_smi)[0]
     mapped_product = module_map_product(pks_design)
@@ -195,6 +236,15 @@ def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple
 
 # Precursor extraction functions
 def pks_precursor_atoms(unbound_mol: Chem.Mol, mol: Chem.Mol) -> set:
+    """
+    Identify the PKS precursor if the entire target molecule is not synthesized via PKSs
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        mol (Chem.Mol): The target molecule
+    Returns:
+        precursor_atoms (set): Target molecule atom indices present in
+                               the PKS product
+    """
     mcs_atoms, mcs_smarts = mcs_search(unbound_mol, mol, False)
     if mcs_atoms > 0:
         precursor_atoms = set(mol.GetSubstructMatch(mcs_smarts))
@@ -203,6 +253,14 @@ def pks_precursor_atoms(unbound_mol: Chem.Mol, mol: Chem.Mol) -> set:
     return precursor_atoms
 
 def extract_precursor_mol(mol: Chem.Mol, precursor_atoms: set) -> Chem.Mol:
+    """
+    Remove target atoms and bonds not present in the PKS precursor
+    Args:
+        mol (Chem.Mol): The target molecule
+        precursor_atoms (set): PKS precursor atom indices
+    Returns:
+        precursor_mol (Chem.Mol): The extracted PKS precursor molecule
+    """
     mol_copy = Chem.Mol(mol)
     for atom in mol_copy.GetAtoms():
         atom.SetIntProp("original_idx", atom.GetIdx())
@@ -231,7 +289,17 @@ def extract_precursor_mol(mol: Chem.Mol, precursor_atoms: set) -> Chem.Mol:
             pass
     return precursor_mol
 
-def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol):
+def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol) -> tuple[Chem.Mol, float]:
+    """
+    Sets the target molecule as the PKS precursor if the 2D MCS similarity between
+    the RetroTide PKS product and the full target molecule is less than 100%.
+    Args:
+        unbound_mol (Chem.Mol): The unbound PKS product
+        mol (Chem.Mol): The target molecule
+    Returns:
+        precursor_mol (Chem.Mol): The PKS precursor target if needed
+        mcs_score (float): The 2D MCS similarity score
+    """
     mcs_score = compareToTarget(unbound_mol, mol, 'mcs_without_stereo')
     if mcs_score < 1.0:
         print(f'The PKS product only matches {mcs_score*100:.1f}% of the 2D target molecule.')
