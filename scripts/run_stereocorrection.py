@@ -1,4 +1,22 @@
 """
+Python script for retrosynthesis tasks to run RetroTide with the post processing stereochemistry correction
+KR Swaps. Predicts a chimeric type I PKS design and PKS product that has maximal structure and
+stereochemistry correspondence with the target molecule.
+
+Requires configuration file in YAML format specifying:
+- job_name: title for the retrosynthesis job
+- output_dir: directory to save results
+- molecule: user-defined target molecule in SMILES format
+- starter_codes: loading module substrates to consider
+- extender_codes: extender module substrates to consider
+- stereo: user-specification of which stereochemistry to correct for (R/S, E/Z, all, none)
+- offload_mech: TE mediated offloading mechanism (thiolysis, cyclization)
+
+Returns:
+- JSON file with imformation such as the final PKS design, PKS product SMILES, and similarity metrics
+  for comparing the PKS product to the target molecule.
+- SVG files providing a visual depiction of the stereochemistry correspondence between the PKS product
+  and the target molecule, before and after the stereochemistry correction.
 """
 # pylint: disable=no-member, import-error, wrong-import-position
 from typing import Optional, List
