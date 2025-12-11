@@ -1,10 +1,9 @@
 """
 Modules for running RetroTide with the KR Swaps stereochemistry correction algorithm
 """
-# pylint: disable=no-member
 import json
 from collections import namedtuple, OrderedDict
-from typing import Optional, List, Tuple
+from typing import Tuple
 from rdkit import Chem
 from rdkit.Chem import rdFMCS, AllChem, Draw
 from mapchiral.mapchiral import encode, jaccard_similarity
@@ -70,6 +69,7 @@ def lactone_size(mol: Chem.Mol, pattern_matches: tuple) -> tuple[int, tuple]:
         for ring in ring_info.AtomRings():
             if any(idx in ring for match in pattern_matches for idx in match):
                 lactone_sizes.append((len(ring) - 1))
+                ring = ring
             else:
                 lactone_sizes.append(int(0))
     if lactone_sizes:
@@ -88,8 +88,7 @@ def get_mod_number(module_label: str) -> int:
     """
     if module_label == 'LM':
         return 0
-    else:
-        return int(module_label.lstrip('M'))
+    return int(module_label.lstrip('M'))
     
 # Obtain RetroTide results functions
 def canonicalize_smiles(molecule_smi: str, stereo: str) -> str:
@@ -216,11 +215,13 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
                 return(pks_product,)
             for hydroxyl in hydroxyl_matches:
                 hydroxyl_o_idx = hydroxyl[0]
-                distance = len(Chem.GetShortestPath(pks_product, carbonyl_c_idx, hydroxyl_o_idx)) - 1
+                distance = len(Chem.GetShortestPath(
+                    pks_product, carbonyl_c_idx, hydroxyl_o_idx)) - 1
                 if distance == target_size:
                     editable_product = Chem.EditableMol(pks_product)
                     editable_product.RemoveBond(carbonyl_c_idx, s_idx)
-                    editable_product.AddBond(carbonyl_c_idx, hydroxyl_o_idx, Chem.rdchem.BondType.SINGLE)
+                    editable_product.AddBond(carbonyl_c_idx, hydroxyl_o_idx,
+                                             Chem.rdchem.BondType.SINGLE)
                     editable_product.RemoveAtom(s_idx)
                     unbound_mol = editable_product.GetMol()
                     Chem.SanitizeMol(unbound_mol)
@@ -229,7 +230,7 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
             return (pks_product,)
         print("Warning: No valid lactone found in target")
         return (pks_product,)
-    return (unbound_mol,)
+    return (pks_product,)
 
 def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple[Chem.Mol, dict]:
     """
@@ -252,7 +253,7 @@ def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple
     pks_features = get_design_features(pks_design)
     return unbound_mol, pks_features
 
-# Precursor extraction functions
+# PKS Precursor extraction functions
 def pks_precursor_atoms(unbound_mol: Chem.Mol, mol: Chem.Mol) -> set:
     """
     Identify the PKS precursor if the entire target molecule is not synthesized via PKSs
@@ -327,7 +328,7 @@ def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol) -> tuple[Chem.Mol, floa
     mcs_score = compareToTarget(unbound_mol, mol, 'mcs_without_stereo')
     if mcs_score < 1.0:
         print(f'The PKS product only matches {mcs_score*100:.1f}% of the 2D target molecule.')
-        print(f'Extracting the PKS precursor from the target molecule.')
+        print('Extracting the PKS precursor from the target molecule.')
         precursor_atoms = pks_precursor_atoms(unbound_mol, mol)
         precursor_mol = extract_precursor_mol(mol, precursor_atoms)
         return precursor_mol, mcs_score
@@ -405,7 +406,7 @@ def atom_map(unbound_mol: Chem.Mol, mol: Chem.Mol) -> pd.DataFrame:
         return atom_map_df
     return atom_map_df
 
-def full_map(atom_map: pd.DataFrame, module_map: pd.DataFrame) -> pd.DataFrame:
+def full_map(atom_mapping: pd.DataFrame, module_mapping: pd.DataFrame) -> pd.DataFrame:
     """
     Merge PKS product atom and module mapping
 
@@ -414,11 +415,11 @@ def full_map(atom_map: pd.DataFrame, module_map: pd.DataFrame) -> pd.DataFrame:
                                  information: atom type, product atom index,
                                  corresponding target atom index, and PKS module index
     """
-    full_map = pd.merge(
-        atom_map,
-        module_map,
+    full_map_df = pd.merge(
+        atom_mapping,
+        module_mapping,
         on=['Atom Type', 'Product Atom Idx']).dropna()
-    return full_map
+    return full_map_df
 
 # Handling lactone alkene stereochemistry functions
 def get_lactone_atoms(mol: Chem.Mol) -> tuple:
@@ -436,13 +437,13 @@ def get_lactone_atoms(mol: Chem.Mol) -> tuple:
         mol, '[C:1](=[O:2])[O:3][C:4]')
     return lactone_size(mol, ester_matches)[1]
 
-def find_target_lactone(mol: Chem.Mol, full_map: pd.DataFrame) -> tuple:
+def find_target_lactone(mol: Chem.Mol, full_map_df: pd.DataFrame) -> tuple:
     """
     Uses the atom mapping to identify target molecule lactone atoms.
 
     Args:
         mol (Chem.Mol): query molecule
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
     
     Returns:
         target_lactone_atoms (tuple): target lactone ring atom indices
@@ -450,7 +451,7 @@ def find_target_lactone(mol: Chem.Mol, full_map: pd.DataFrame) -> tuple:
     target_lactone_atoms = set()
     lactone_atoms = get_lactone_atoms(mol)
     for atom in lactone_atoms:
-        target_idx = full_map.loc[full_map['Product Atom Idx'] == atom, 'Target Atom Idx']
+        target_idx = full_map_df.loc[full_map_df['Product Atom Idx'] == atom, 'Target Atom Idx']
         target_lactone_atoms.add(int(target_idx))
     return tuple(target_lactone_atoms)
 
@@ -475,14 +476,15 @@ def force_target_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple) -> Chem.Mol
                     bond.SetStereo(Chem.BondStereo.STEREOZ)
     return mol
 
-def force_pks_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple, full_map: pd.DataFrame, pks_features: dict) -> Chem.Mol:
+def force_pks_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple, full_map_df: pd.DataFrame, pks_features: dict) -> Chem.Mol:
     """
-    Force PKS product lactone alkene stereochemistry based on the responsible DH subtype in the original PKS design.
+    Force PKS product lactone alkene stereochemistry based on the responsible DH subtype
+    in the original PKS design.
 
     Args:
         mol (Chem.Mol): PKS product
         lactone_atoms (tuple): PKS product lactone ring atom indices
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
         pks_features (dict): RetroTide PKS design information
     
     Returns:
@@ -496,8 +498,10 @@ def force_pks_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple, full_map: pd.D
                 begin_idx = bond.GetBeginAtomIdx()
                 end_idx = bond.GetEndAtomIdx()
                 if begin_idx in lactone_atoms and end_idx in lactone_atoms:
-                    begin_module = get_mod_number(full_map.loc[full_map['Product Atom Idx'] == begin_idx, 'Module Idx'].values[0])
-                    end_module = get_mod_number(full_map.loc[full_map['Product Atom Idx'] == end_idx, 'Module Idx'].values[0])
+                    begin_module = get_mod_number(
+                        full_map_df.loc[full_map_df['Product Atom Idx'] == begin_idx, 'Module Idx'].values[0])
+                    end_module = get_mod_number(
+                        full_map_df.loc[full_map_df['Product Atom Idx'] == end_idx, 'Module Idx'].values[0])
                     target_module = begin_module if begin_module > end_module else end_module
                     dh_subtype = pks_features['DH Type'][target_module]
                     if dh_subtype == 'Z':
@@ -510,14 +514,14 @@ def force_pks_lactone_alkene(mol: Chem.Mol, lactone_atoms: tuple, full_map: pd.D
 ChiralCheckResult = namedtuple('ChiralCheckResult',
                                ['match1', 'match2', 'mmatch1', 'mmatch2', 'cc1', 'cc2'])
 
-def get_rs_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map: pd.DataFrame) -> ChiralCheckResult:
+def get_rs_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map_df: pd.DataFrame) -> ChiralCheckResult:
     """
     Checks chirality correspondence of mapped PKS product and target molecule stereocenters.
 
     Args:
         unbound_mol (Chem.Mol): The TE offloaded PKS product
         mol (Chem.Mol): The target molecule
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
 
     Returns:
         ChiralCheckResult (namedtuple): 
@@ -528,8 +532,8 @@ def get_rs_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map:
     cc1 = dict(Chem.FindMolChiralCenters(unbound_mol, includeUnassigned=True))
     cc2 = dict(Chem.FindMolChiralCenters(mol, includeUnassigned=True))
     match1, match2, mmatch1, mmatch2 = [], [], [], []
-    product_atoms = full_map['Product Atom Idx'].astype(int).tolist()
-    target_atoms = full_map['Target Atom Idx'].astype(int).tolist()
+    product_atoms = full_map_df['Product Atom Idx'].astype(int).tolist()
+    target_atoms = full_map_df['Target Atom Idx'].astype(int).tolist()
     for idx1, idx2 in zip(product_atoms, target_atoms):
         if idx1 in cc1 and idx2 in cc2:
             if cc1[idx1] == cc2[idx2]:
@@ -568,14 +572,15 @@ def extract_ez_atoms(mol: Chem.Mol) -> Tuple[list, list]:
 AlkeneCheckResult = namedtuple('AlkeneCheckResult',
                                 ['match1', 'match2', 'mmatch1', 'mmatch2'])
 
-def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map: pd.DataFrame) -> AlkeneCheckResult:
+def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map_df: pd.DataFrame) -> AlkeneCheckResult:
     """
-    Checks alkene stereochemistry correspondence of mapped PKS product and target molecule stereocenters.
+    Checks alkene stereochemistry correspondence of mapped PKS product and target
+    molecule stereocenters.
 
     Args:
         unbound_mol (Chem.Mol): The TE offloaded PKS product
         mol (Chem.Mol): The target molecule
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
 
     Returns:
         AlkeneCheckResult (namedtuple):
@@ -585,8 +590,8 @@ def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map:
     z_1, e_1 = extract_ez_atoms(unbound_mol)
     z_2, e_2 = extract_ez_atoms(mol)
     match1, match2, mmatch1, mmatch2 = [], [], [], []
-    product_atoms = full_map['Product Atom Idx'].astype(int).tolist()
-    target_atoms = full_map['Target Atom Idx'].astype(int).tolist()
+    product_atoms = full_map_df['Product Atom Idx'].astype(int).tolist()
+    target_atoms = full_map_df['Target Atom Idx'].astype(int).tolist()
     for idx1, idx2 in zip(product_atoms, target_atoms):
         if idx1 in z_1 + e_1 and idx2 in z_2 + e_2:
             if (idx1 in z_1 and idx2 in z_2) or (idx1 in e_1 and idx2 in e_2):
@@ -598,11 +603,13 @@ def get_ez_stereo_correspondence(unbound_mol: Chem.Mol, mol: Chem.Mol, full_map:
     return AlkeneCheckResult(match1, match2, mmatch1, mmatch2)
 
 ProcessingResult = namedtuple('ProcessingResult',
-                              ['unbound_mol', 'target_mol', 'mapping', 'chiral_result', 'alkene_result'])
+                              ['unbound_mol', 'target_mol', 'mapping',
+                               'chiral_result', 'alkene_result'])
 
 def preprocessing(pks_features: dict, unbound_mol: Chem.Mol, target_mol: Chem.Mol) -> ProcessingResult:
     """
-    Processes the RetroTide PKS design and product to hand off to the stereochemistry correction algorithm.
+    Processes the RetroTide PKS design and product to hand off to the stereochemistry
+    correction algorithm.
 
     Args:
         pks_features (dict): RetroTide PKS design information
@@ -614,38 +621,39 @@ def preprocessing(pks_features: dict, unbound_mol: Chem.Mol, target_mol: Chem.Mo
             - unbound_mol (Chem.Mol): Processed TE offloaded PKS product
             - target_mol (Chem.Mol): Processed target molecule
             - mapping (pd.DataFrame): Atom and module mapping informaiton
-            - chiral_result (ChiralCheckResult): Chirality correspondence results
-            - alkene_result (AlkeneCheckResult): Alkene stereochemistry correspondence results
+            - chiral_result (ChiralCheckResult): R/S correspondence results
+            - alkene_result (AlkeneCheckResult): E/Z correspondence results
     """
     module_mapped_df = module_map(unbound_mol)
     atom_mapped_df = atom_map(unbound_mol, target_mol)
-    full_mapped_df = full_map(atom_mapped_df, module_mapped_df)
+    full_map_df = full_map(atom_mapped_df, module_mapped_df)
     lactone_atoms = get_lactone_atoms(unbound_mol)
     if lactone_atoms:
-        target_lactone_atoms = find_target_lactone(unbound_mol, full_mapped_df)
-        unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms, full_mapped_df, pks_features)
+        target_lactone_atoms = find_target_lactone(unbound_mol, full_map_df)
+        unbound_mol = force_pks_lactone_alkene(unbound_mol, lactone_atoms,
+                                               full_map_df, pks_features)
         target_mol = force_target_lactone_alkene(target_mol, target_lactone_atoms)
     else:
         Chem.AssignStereochemistry(unbound_mol, force=True, cleanIt=True)
         Chem.AssignStereochemistry(target_mol, force=True, cleanIt=True)
-    chiral_result = get_rs_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
-    alkene_result = get_ez_stereo_correspondence(unbound_mol, target_mol, full_mapped_df)
-    return ProcessingResult(unbound_mol, target_mol, full_mapped_df, chiral_result, alkene_result)
+    chiral_result = get_rs_stereo_correspondence(unbound_mol, target_mol, full_map_df)
+    alkene_result = get_ez_stereo_correspondence(unbound_mol, target_mol, full_map_df)
+    return ProcessingResult(unbound_mol, target_mol, full_map_df, chiral_result, alkene_result)
 
 # Identify stereochemistry mismatch case functions
-def extract_carbon_pairs(mol: Chem.Mol, full_map: pd.DataFrame) -> list:
+def extract_carbon_pairs(mol: Chem.Mol, full_map_df: pd.DataFrame) -> list:
     """
     Identifies backbone carbons and their corresponding PKS module indices.
 
     Args:
         mol (Chem.Mol): The TE offloaded PKS product
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
 
     Returns:
         backbone_pairs (list): backbone carbon pairs mapped to sequential PKS modules
     """
     carbons = {}
-    for _, row in full_map.iterrows():
+    for _, row in full_map_df.iterrows():
         if row['Atom Type'] == 'C':
             c_idx = int(row['Product Atom Idx'])
             carbons[c_idx] = row['Module Idx']
@@ -657,12 +665,14 @@ def extract_carbon_pairs(mol: Chem.Mol, full_map: pd.DataFrame) -> list:
             if neighbor.GetSymbol() == 'C' and neighbor.GetIdx() in carbons.keys():
                 neighbor_mod = carbons[neighbor.GetIdx()]
                 if neighbor_mod != carbons[c_idx]:
-                    pair = tuple(sorted([(c_idx, carbons[c_idx]), (neighbor.GetIdx(), neighbor_mod)]))
+                    pair = tuple(sorted([(c_idx, carbons[c_idx]),
+                                         (neighbor.GetIdx(),
+                                          neighbor_mod)]))
                     if pair not in backbone_pairs:
                         backbone_pairs.append(pair)
     return backbone_pairs
 
-def address_undefined_stereo(pairs: list, chiral_result: ChiralCheckResult, full_map: pd.DataFrame) -> set:
+def address_undefined_stereo(pairs: list, chiral_result: ChiralCheckResult, full_map_df: pd.DataFrame) -> set:
     """
     Identifies target molecule stereocenters with undefined stereochemistry ('?') and
     the corresponding PKS module(s).
@@ -670,7 +680,7 @@ def address_undefined_stereo(pairs: list, chiral_result: ChiralCheckResult, full
     Args:
         pairs (list): backbone carbon pairs mapped to sequential PKS modules
         chiral_result (ChiralCheckResult): R/S correspondence results
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
 
     Returns:
         undefined_cc_mods (set): PKS modules mapped to undefined target stereochemistry
@@ -678,9 +688,10 @@ def address_undefined_stereo(pairs: list, chiral_result: ChiralCheckResult, full
     undefined_cc_mods = set([])
     for idx, cip in chiral_result.cc2.items():
         if cip == '?':
-            product_idx = full_map.loc[full_map['Target Atom Idx'] == idx, 'Product Atom Idx'].values[0]
+            product_idx = full_map_df.loc[full_map_df['Target Atom Idx'] == idx,
+                                       'Product Atom Idx'].values[0]
             for pair in pairs:
-                if pair[0][0] == product_idx or pair[1][0] == product_idx:
+                if product_idx in (pair[0][0], pair[1][0]):
                     m_i = get_mod_number(pair[0][1])
                     m_i_1 = get_mod_number(pair[1][1])
                     undefined_cc_mods.add(m_i if m_i > m_i_1 else m_i_1)
@@ -802,6 +813,18 @@ def check_alkene_mismatch(mol: Chem.Mol, pair: tuple, alkene_mmatch1: list) -> d
     return substructure_results
 
 def check_cc_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, cc_mmatch1: list) -> list:
+    """
+    Assesses each backbone pair that has at least one stereochemistry mismatch and updates
+    whether the alpha and/or beta carbons are mismatched.
+
+    Args:
+        mol (Chem.Mol): The TE offloaded PKS product
+        carbon_pairs (list): backbone carbon pairs
+        cc_mmatch1 (list): PKS product atom indices that have mismatched stereochemistry
+    
+    Returns:
+        cc_mismatch_results (list): chiral mismatch information for each pair
+    """
     cc_mismatch_pairs = identify_pairs_with_mismatches(carbon_pairs, cc_mmatch1)
     cc_mismatch_results = []
     for pair in cc_mismatch_pairs:
@@ -827,6 +850,18 @@ def check_cc_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, cc_mmatch1: list)
     return cc_mismatch_results
 
 def check_alkene_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, alkene_mmatch1: list) -> list:
+    """
+    Assess each backbone pair for an alkene stereochemistry mismatch and updates the
+    pair information accordingly.
+
+    Args:
+        mol (Chem.Mol): The TE offloaded PKS product
+        carbon_pairs (list): backbone carbon pairs
+        alkene_mmatch1 (list): PKS product atom indices that have mismatched alkene stereochemistry
+
+    Returns:
+        alkene_mismatch_results (list): alkene mismatch information for each pair
+    """
     alkene_mismatch_pairs = identify_pairs_with_mismatches(carbon_pairs, alkene_mmatch1)
     alkene_mismatch_results = []
     for pair in alkene_mismatch_pairs:
@@ -845,40 +880,41 @@ def check_alkene_mismatch_cases(mol: Chem.Mol, carbon_pairs: list, alkene_mmatch
         alkene_mismatch_results.append(pair_info)
     return alkene_mismatch_results
 
-def get_cc_mismatch_results(mol: Chem.Mol, full_map: pd.DataFrame, cc_result: ChiralCheckResult) -> tuple[list, list]:
+def get_cc_mismatch_results(mol: Chem.Mol, full_map_df: pd.DataFrame, cc_result: ChiralCheckResult) -> tuple[list, list]:
     """
-    Extracts R/S stereochemistry correspondence results and identifies whether the alpha and/or beta
-    carbons are mismatched for each backbone carbon pair. Also identifies any undefined stereochemistry
-    in the target molecule and identifies the corresponding PKS module(s).
+    Extracts R/S stereochemistry correspondence results and identifies whether the
+    alpha and/or beta carbons are mismatched for each backbone carbon pair. Also
+    identifies any undefined stereochemistry in the target molecule and identifies
+    the corresponding PKS module(s).
 
     Args:
         mol (Chem.Mol): The TE offloaded PKS product
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
         cc_result (ChiralCheckResult): R/S correspondence results
 
     Returns:
-        mismatch_results (list): alpha and beta carbon mismatch infromation for each backbone carbon pair
-        type_u_mods (list): PKS modules mapped to target stereocenters with undefined stereochemistry
+        mismatch_results (list): alpha and beta carbon mismatch infromation for each pair
+        type_u_mods (list): modules mapped to target undefined stereocenters
     """
-    pairs = extract_carbon_pairs(mol, full_map)
-    type_u_mods = address_undefined_stereo(pairs, cc_result, full_map)
+    pairs = extract_carbon_pairs(mol, full_map_df)
+    type_u_mods = address_undefined_stereo(pairs, cc_result, full_map_df)
     mismatch_results = check_cc_mismatch_cases(mol, pairs, cc_result.mmatch1)
     return mismatch_results, type_u_mods
 
-def get_alkene_mismatch_results(mol: Chem.Mol, full_map: pd.DataFrame, alkene_result) -> list:
+def get_alkene_mismatch_results(mol: Chem.Mol, full_map_df: pd.DataFrame, alkene_result) -> list:
     """
-    Extracts E/Z stereochemistry correspondence results and identifies wehther the alkene carbons
+    Extracts E/Z stereochemistry correspondence results and identifies whether the alkene carbons
     are mismatched for each backbone carbon pair.
 
     Args:
         mol (Chem.Mol): The TE offloaded PKS product
-        full_map (pd.DataFrame): atom and module mapping
+        full_map_df (pd.DataFrame): atom and module mapping
         alkene_result (AlkeneCheckResult): E/Z correspondence results
     
     Returns:
         mismatch_results (list): alkene carbon mismatch information for each backbone carbon pair
     """
-    pairs = extract_carbon_pairs(mol, full_map)
+    pairs = extract_carbon_pairs(mol, full_map_df)
     mismatch_results = check_alkene_mismatch_cases(mol, pairs, alkene_result.mmatch1)
     return mismatch_results
 
@@ -913,7 +949,7 @@ def kr_type_logic(pks_features: dict, target_mod: int, alpha: bool, beta: bool) 
     elif (substrate == 'Methylmalonyl-CoA' and pks_features['DH Type'][target_mod] != 'None'):
         new_kr_type = 'B1'
     # Complex cases
-    elif old_kr_type is None:
+    elif old_kr_type == 'None':
         if alpha:
             new_kr_type = 'C2'
             print('    Case 5: Adding KR type C2 to perform epimerization of the alpha chiral center')
@@ -961,11 +997,10 @@ def er_type_logic(pks_features: dict, target_mod: int) -> str:
             new_er_type = 'D' if old_er_type == 'L' else 'L'
             print('   Case 7: Swapping ER subtype')
         else:
-            return old_er_type # ER subtype can be ignored as malonyl-CoA has no alpha chiral center
+            return old_er_type # Ignore the ER subtype as malonyl-CoA has no alpha chiral center
         return new_er_type
-    else:
-        print(f'   No ER domain present in {target_mod} -> cannot fix mismatch by ER swap')
-        return 'None'
+    print(f'   No ER domain present in {target_mod} -> cannot fix mismatch by ER swap')
+    return 'None'
 
 def kr_dh_type_logic(pks_features: dict, target_mod: int) -> tuple[str, str]:
     """
@@ -1013,7 +1048,8 @@ def identify_kr_swap_case(pks_features: dict, result: dict) -> dict:
     old_kr_type = pks_features['KR Type'][target_mod]
     print(f'----Analyzing mismatch(s) in pair ({result["c_idx_i"]}, {result["c_idx_i+1"]})----')
     print(f'    alpha_mismatch: {result["alpha_mismatch"]}, beta_mismatch: {result["beta_mismatch"]}')
-    new_kr_type = kr_type_logic(pks_features, target_mod, alpha=result['alpha_mismatch'], beta=result['beta_mismatch'])
+    new_kr_type = kr_type_logic(pks_features, target_mod,
+                                alpha=result['alpha_mismatch'], beta=result['beta_mismatch'])
     if new_kr_type != old_kr_type:
         pks_features['KR Type'][target_mod] = new_kr_type
         print(f'    Making KR swap in module {target_mod}: Type {old_kr_type} -> Type {new_kr_type}')
@@ -1075,7 +1111,8 @@ def kr_swaps(pks_features: dict, mismatch_results: list) -> dict:
 
     Args:
         pks_features (dict): RetroTide PKS design information
-        mismatch_results (list): alpha and beta carbon mismatch information for each backbone carbon pair
+        mismatch_results (list): alpha and beta carbon mismatch information for each backbone
+                                 carbon pair
     
     Returns:
         pks_features (dict): The updated PKS design post KR domain swaps
@@ -1086,12 +1123,13 @@ def kr_swaps(pks_features: dict, mismatch_results: list) -> dict:
 
 def er_swaps(pks_features: dict, mismatch_results: list) -> dict:
     """
-    Assess each remaining mismatched pair after making KR domain swaps, and employs ER domain swaps
-    to perform epimerization of the alpha carbon.
+    Assess each remaining mismatched pair after making KR domain swaps, and employs
+    ER domain swaps to perform epimerization of the alpha carbon.
 
     Args:
         pks_features (dict): RetroTide PKS design information
-        mismatch_results (list): alpha and beta carbon mismatch information for each backbone carbon pair
+        mismatch_results (list): alpha and beta carbon mismatch information for each
+                                 backbone carbon pair
     
     Returns:
         pks_features (dict): The updated PKS design post ER domain swaps
@@ -1102,12 +1140,13 @@ def er_swaps(pks_features: dict, mismatch_results: list) -> dict:
 
 def dh_swaps(pks_features: dict, mismatch_results: list) -> dict:
     """
-    Assesses each alkene mismatched pair and employs DH-KR domain swaps to perform an E/Z stereochemistry
-    correction.
+    Assesses each alkene mismatched pair and employs DH-KR domain swaps to perform
+    an E/Z stereochemistry correction.
 
     Args:
         pks_features (dict): RetroTide PKS design information
-        mismatch_results (list): alkene carbon mismatch information for each backbone carbon pair
+        mismatch_results (list): alkene carbon mismatch information for each backbone
+                                 carbon pair
     
     Returns:
         pks_features (dict): The updated PKS design post DH-KR domain swaps
@@ -1128,13 +1167,13 @@ def new_pks_design(pks_features: dict) -> tuple[Chem.Mol, list]:
         pks_product (Chem.Mol): The final PKS product after stereocorrections
         pks_design (list): The final PKS design after stereocorrections
     """
-    new_pks_design = []
+    pks_design = []
     for idx, substrate in enumerate(pks_features['Substrate']):
         substrate = pks_features['Substrate'][idx]
         if idx == 0:
             domains_dict = OrderedDict({bcs.AT: bcs.AT(active=True, substrate=substrate)})
             module = bcs.Module(domains=domains_dict, loading=True)
-            new_pks_design.append(module)
+            pks_design.append(module)
         else:
             at = bcs.AT(active=True, substrate=substrate)
             domains_dict = OrderedDict({bcs.AT: at})
@@ -1145,12 +1184,13 @@ def new_pks_design(pks_features: dict) -> tuple[Chem.Mol, list]:
                 domains_dict.update({bcs.DH: bcs.DH(active=True,
                                                     type=pks_features['DH Type'][idx])})
             if pks_features['ER Type'][idx] != 'None':
-                domains_dict.update({bcs.ER: bcs.ER(active=True, type=pks_features['ER Type'][idx])})
+                domains_dict.update({bcs.ER: bcs.ER(active=True,
+                                                    type=pks_features['ER Type'][idx])})
             module = bcs.Module(domains=domains_dict, loading=False)
-            new_pks_design.append(module)
-    cluster_f = bcs.Cluster(modules=new_pks_design)
-    new_pks_product = cluster_f.computeProduct(structureDB)
-    return new_pks_product, new_pks_design
+            pks_design.append(module)
+    cluster_f = bcs.Cluster(modules=pks_design)
+    pks_product = cluster_f.computeProduct(structureDB)
+    return pks_product, pks_design
 
 def insert_unknown_types(pks_features: dict, type_u_modules: set) -> dict:
     """
@@ -1159,7 +1199,8 @@ def insert_unknown_types(pks_features: dict, type_u_modules: set) -> dict:
 
     Args:
         pks_features (dict): RetroTide PKS design information
-        type_u_modules (set): PKS modules mapped to target stereocenters with undefined stereochemistry
+        type_u_modules (set): PKS modules mapped to target stereocenters with undefined
+                              stereochemistry
     
     Returns:
         pks_features (dict): The PKS design information reflecting these changes
@@ -1196,23 +1237,27 @@ def parse_final_design(pks_design_features: dict) -> list:
             reductive_loop += (f'KR({pks_design_features["KR Type"][idx]})')
         else:
             reductive_loop = None
-        entry = [f'M{idx}', f'AT Substrate: {pks_design_features["Substrate"][idx]}', f'Reductive Loop: {reductive_loop}']
+        entry = [f'M{idx}', f'AT Substrate: {pks_design_features["Substrate"][idx]}',
+                 f'Reductive Loop: {reductive_loop}']
         parsed_design.append(entry)
     return parsed_design
 
 CorrectionResult = namedtuple('CorrectionResult',
-                                ['pks_product', 'pks_design', 'target', 'mapping', 'chiral_result', 'alkene_result'])
+                                ['pks_product', 'pks_design', 'target', 'mapping',
+                                 'chiral_result', 'alkene_result'])
 
 def postprocessing(pks_features_updated: dict, target_mol: Chem.Mol, offload_mech: str, type_u_mods: set) -> CorrectionResult:
     """
-    Processess the PKS design post KR Swaps stereochemistry correction. Outputs the final design and corresponding PKS product.
-    Determines the R/S adn E/Z stereochemistry correspondence between the PKS product and target molecule post correction.
+    Processess the PKS design post KR Swaps stereochemistry correction. Outputs the final design
+    and corresponding PKS product. Determines the R/S and E/Z stereochemistry correspondence
+    between the PKS product and target molecule post correction.
 
     Args:
         pks_features_updated (dict): RetroTide PKS design information post KR Swaps corrections
         target_mol (Chem.Mol): The target molecule
         offload_mech (str): TE offloading mechanism
-        type_u_mods (set): PKS modules mapped to target stereocenters with undefined stereochemistry
+        type_u_mods (set): PKS modules mapped to target stereocenters with undefined
+                           stereochemistry
     
     Returns:
         CorrectionResult (namedtuple):
@@ -1231,12 +1276,13 @@ def postprocessing(pks_features_updated: dict, target_mol: Chem.Mol, offload_mec
     mapped_product = module_map_product(new_design)
     new_pks_product = te_offload(mapped_product, target_mol, offload_mech)[0]
     pp_result = preprocessing(pks_features_updated, new_pks_product, target_mol)
-    return CorrectionResult(pp_result.unbound_mol, design_result, pp_result.target_mol, pp_result.mapping, pp_result.chiral_result, pp_result.alkene_result)
+    return CorrectionResult(pp_result.unbound_mol, design_result, pp_result.target_mol,
+                            pp_result.mapping, pp_result.chiral_result, pp_result.alkene_result)
 
-def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.DataFrame, pks_features: dict, offload_mech: str, chiral_result, alkene_result):
+def kr_swaps_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map_df: pd.DataFrame, pks_features: dict, offload_mech: str, chiral_result, alkene_result):
     """
-    Main function to execute KR, DH-KR, and ER domain swaps to correct both the R/S and E/Z stereochemistry
-    to best match that of the target molecule.
+    Main function to execute KR, DH-KR, and ER domain swaps to correct both the R/S and E/Z
+    stereochemistry to best match that of the target molecule.
 
     Args:
         unbound_mol (Chem.Mol): The TE offloaded PKS product
@@ -1248,20 +1294,26 @@ def kr_swap_algorithm(unbound_mol: Chem.Mol, target_mol: Chem.Mol, full_map: pd.
         alkene_result (AlkeneCheckResult): E/Z correspondence results
     
     Returns:
-        CorrectionResult (namedtuple): PKS product and PKS design information post stereochemistry correction
+        CorrectionResult (namedtuple): PKS product and PKS design information post
+                                       stereochemistry correction
     """
     print('Correcting R/S stereochemistry')
-    cc_mismatch_results, type_u_mods = get_cc_mismatch_results(unbound_mol, full_map, chiral_result)
+    cc_mismatch_results, type_u_mods = get_cc_mismatch_results(unbound_mol,
+                                                               full_map_df,
+                                                               chiral_result)
     pks_features_updated = kr_swaps(pks_features, cc_mismatch_results)
 
     print('Correcting E/Z stereochemistry')
-    alkene_mismatch_results = get_alkene_mismatch_results(unbound_mol, full_map, alkene_result)
+    alkene_mismatch_results = get_alkene_mismatch_results(unbound_mol,
+                                                          full_map_df,
+                                                          alkene_result)
     pks_features_updated = dh_swaps(pks_features_updated, alkene_mismatch_results)
 
     krs_result = postprocessing(pks_features_updated, target_mol, offload_mech, type_u_mods)
     if krs_result.chiral_result.mmatch1:
         print('Correcting remianing R/S mismatches')
-        cc_mismatch_results_f, type_u_mods = get_cc_mismatch_results(krs_result.pks_product, krs_result.mapping, krs_result.chiral_result)
+        cc_mismatch_results_f, type_u_mods = get_cc_mismatch_results(
+            krs_result.pks_product, krs_result.mapping, krs_result.chiral_result)
         pks_features_updated = er_swaps(pks_features_updated, cc_mismatch_results_f)
         return postprocessing(pks_features_updated, target_mol, offload_mech, type_u_mods)
     return krs_result
@@ -1348,7 +1400,8 @@ def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_resul
 def compute_jaccard_sim(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     """
     Compute the Jaccard similarity between two molecules.
-    Uses MAP4C fingerprints: Min-hashed Atom Pair Chiral Fingerprints (https://github.com/reymond-group/mapchiral)
+    Uses MAP4C fingerprints: Min-hashed Atom Pair Chiral Fingerprints
+                             (https://github.com/reymond-group/mapchiral)
 
     Args:
         mol1, mol2 (Chem.Mol): query molecules
@@ -1377,13 +1430,16 @@ def krswaps_stereo_correction(target_smi: str, stereo: str, offload_mech: str):
         Images depicting the stereochmistry correspondence pre and post correction.
         The PKS precursor to the target molecule (if appropriate).
         The final PKS design and PKS product after stereochemistry correction.
-        MCS and Jaccard similarity metrics comparing the predicted PKS product to the entire target molecule.
+        MCS and Jaccard similarity metrics comparing the predicted PKS product to the entire
+        target molecule.
     """
     target_mol = Chem.MolFromSmiles(canonicalize_smiles(target_smi, stereo))
-    unbound_pks_product, pks_design_features = get_retro_tide_results(target_smi, stereo, offload_mech)
+    unbound_pks_product, pks_design_features = get_retro_tide_results(target_smi,
+                                                                      stereo,
+                                                                      offload_mech)
     pks_target_mol, mcs_score = get_pks_target(unbound_pks_product, target_mol)
     pp_result = preprocessing(pks_design_features, unbound_pks_product, pks_target_mol)
-    krs_result = kr_swap_algorithm(
+    krs_result = kr_swaps_algorithm(
         pp_result.unbound_mol,
         pp_result.target_mol,
         pp_result.mapping,
@@ -1392,8 +1448,14 @@ def krswaps_stereo_correction(target_smi: str, stereo: str, offload_mech: str):
         pp_result.chiral_result,
         pp_result.alkene_result)
     return {
-        'stereo_before': visualize_stereo_correspondence(pp_result.unbound_mol, pp_result.target_mol, pp_result.chiral_result, pp_result.alkene_result),
-        'stereo_after': visualize_stereo_correspondence(krs_result.pks_product, krs_result.target, krs_result.chiral_result, krs_result.alkene_result),
+        'stereo_before': visualize_stereo_correspondence(pp_result.unbound_mol,
+                                                         pp_result.target_mol,
+                                                         pp_result.chiral_result,
+                                                         pp_result.alkene_result),
+        'stereo_after': visualize_stereo_correspondence(krs_result.pks_product,
+                                                        krs_result.target,
+                                                        krs_result.chiral_result,
+                                                        krs_result.alkene_result),
         'final_pks_design': krs_result.pks_design,
         'target_molecule': Chem.MolToSmiles(target_mol),
         'target_pks_precursor': Chem.MolToSmiles(pks_target_mol),
@@ -1407,7 +1469,8 @@ def output_results(results, job_name, output_path):
     """
     Output RetroTide + KR Swaps stereochemistry correction results to a JSON file and SVG images.
     """
-    with open(f'{output_path}/{job_name}_stereocorrection_results.json', 'w', encoding='utf-8') as json_file:
+    with open(f'{output_path}/{job_name}_stereocorrection_results.json',
+              'w', encoding='utf-8') as json_file:
         json.dump({
             'Target Molecule': results['target_molecule'],
             'Target PKS Precursor': results['target_pks_precursor'],
@@ -1417,7 +1480,9 @@ def output_results(results, job_name, output_path):
             'Initial Jaccard Similarity': results['jaccard_i'],
             'Final Jaccard Similarity': results['jaccard_f']
         }, json_file, indent=2)
-    with open(f'{output_path}/{job_name}_initial_stereo_correspondence.svg', 'w', encoding='utf-8') as pre_img:
+    with open(f'{output_path}/{job_name}_initial_stereo_correspondence.svg',
+              'w', encoding='utf-8') as pre_img:
         pre_img.write(results['stereo_before'])
-    with open(f'{output_path}/{job_name}_final_stereo_correspondence.svg', 'w', encoding='utf-8') as post_img:
+    with open(f'{output_path}/{job_name}_final_stereo_correspondence.svg',
+              'w', encoding='utf-8') as post_img:
         post_img.write(results['stereo_after'])

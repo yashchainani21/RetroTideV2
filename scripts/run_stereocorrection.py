@@ -1,7 +1,8 @@
 """
-Python script for retrosynthesis tasks to run RetroTide with the post processing stereochemistry correction
-KR Swaps. Predicts a chimeric type I PKS design and PKS product that has maximal structure and
-stereochemistry correspondence with the target molecule.
+Python script for retrosynthesis tasks to run RetroTide with the post processing
+stereochemistry correction KR Swaps. Predicts a chimeric type I PKS design and
+PKS product that has maximal structure and stereochemistry correspondence with the
+target molecule.
 
 Requires configuration file in YAML format specifying:
 - job_name: title for the retrosynthesis job
@@ -13,12 +14,11 @@ Requires configuration file in YAML format specifying:
 - offload_mech: TE mediated offloading mechanism (thiolysis, cyclization)
 
 Returns:
-- JSON file with imformation such as the final PKS design, PKS product SMILES, and similarity metrics
-  for comparing the PKS product to the target molecule.
-- SVG files providing a visual depiction of the stereochemistry correspondence between the PKS product
-  and the target molecule, before and after the stereochemistry correction.
+- JSON file with imformation such as the final PKS design, PKS product SMILES, and
+  similarity metrics for comparing the PKS product to the target molecule.
+- SVG files providing a visual depiction of the stereochemistry correspondence between
+  the PKS product and the target molecule, before and after the stereochemistry correction.
 """
-# pylint: disable=no-member, import-error, wrong-import-position
 from typing import Optional, List
 import yaml
 import bcs
@@ -30,7 +30,7 @@ def load_config(config_path="config.yaml"):
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
     
-config = load_config("RetroTideV2/krswaps/test_set/DEBS.yaml")
+config = load_config("RetroTideV2/krswaps/test_set/cryptofolione.yaml")
 
 def modify_bcs_starters_extenders(starter_codes: Optional[List[str]] = None,
                                   extender_codes: Optional[List[str]] = None):
@@ -52,4 +52,3 @@ from krswaps import krswaps as krs
 
 results = krs.krswaps_stereo_correction(config['molecule'], config['stereo'], config['offload_mech'])
 krs.output_results(results, config['job_name'], config['output_dir'])
-        
