@@ -48,8 +48,8 @@
       "Reductive Loop: None"
     ]
   ],
-  "Final PKS Product": "C/C=C(\\C)[C@H](O)[C@H](C)/C=C/C=C(\\C)CC[C@@H](O)C/C=C(\\C)C(=O)CC(=O)O",
+  "Final PKS Product": "C/C=C(\\C)[C@@H](O)[C@@H](C)/C=C/C=C(\\C)CC[C@H](O)C/C=C(\\C)C(=O)CC(=O)O",
   "MCS Similarity": 0.8620689655172413,
-  "Initial Jaccard Similarity": 0.2802734375,
-  "Final Jaccard Similarity": 0.31884765625
+  "Initial Jaccard Similarity": 0.287109375,
+  "Final Jaccard Similarity": 0.31640625
 }
