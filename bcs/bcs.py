@@ -953,12 +953,12 @@ class KR(Domain):
         elif self.type == 'C2': # performs epimerization
             rxn = AllChem.ReactionFromSmarts(('[#0:1][C:2](=[O:3])[C:4]'
                                                    '[C:5](=[O:6])[S:7]>>'
-                                                   '[#0:1][C:2](=[O:3])[C@:4]'
+                                                   '[#0:1][C:2](=[O:3])[C@@:4]'
                                                    '[C:5](=[O:6])[S:7]'))
         elif self.type == 'C1': # does not change stereochemistry
             rxn = AllChem.ReactionFromSmarts(('[#0:1][C:2](=[O:3])[C:4]'
                                                    '[C:5](=[O:6])[S:7]>>'
-                                                   '[#0:1][C:2](=[O:3])[C@@:4]'
+                                                   '[#0:1][C:2](=[O:3])[C@:4]'
                                                    '[C:5](=[O:6])[S:7]'))
         else:
             # By first specifying some stereochemistry in the reactants
