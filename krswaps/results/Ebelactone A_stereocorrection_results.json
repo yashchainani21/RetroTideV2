@@ -20,7 +20,7 @@
     [
       "M3",
       "AT Substrate: Methylmalonyl-CoA",
-      "Reductive Loop: KR(C1)"
+      "Reductive Loop: None"
     ],
     [
       "M4",
@@ -40,6 +40,6 @@
   ],
   "Final PKS Product": "CC[C@@H](C)[C@@H](O)[C@H](C)C(=O)[C@H](C)/C=C(\\C)C[C@H](C)[C@@H]1OC(=O)[C@H]1C",
   "MCS Similarity": 1.0,
-  "Initial Jaccard Similarity": 0.61474609375,
+  "Initial Jaccard Similarity": 0.677734375,
   "Final Jaccard Similarity": 1.0
 }

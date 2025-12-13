@@ -35,6 +35,6 @@
   ],
   "Final PKS Product": "O=C1C=CC[C@H](/C=C/C[C@H](O)C[C@@H](O)C=Cc2ccccc2)O1",
   "MCS Similarity": 1.0,
-  "Initial Jaccard Similarity": 0.5712890625,
+  "Initial Jaccard Similarity": 0.66552734375,
   "Final Jaccard Similarity": 0.8046875
 }

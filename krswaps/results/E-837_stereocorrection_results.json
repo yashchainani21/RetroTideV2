@@ -30,7 +30,7 @@
     [
       "M5",
       "AT Substrate: Malonyl-CoA",
-      "Reductive Loop: DH(E)-ER(D)-KR(B)"
+      "Reductive Loop: DH(E)-ER(L)-KR(B)"
     ],
     [
       "M6",
@@ -48,8 +48,8 @@
       "Reductive Loop: None"
     ]
   ],
-  "Final PKS Product": "C/C=C(\\C)[C@@H](O)[C@H](C)/C=C/C=C(\\C)CC[C@@H](O)C/C=C(\\C)C(=O)CC(=O)O",
+  "Final PKS Product": "C/C=C(\\C)[C@H](O)[C@H](C)/C=C/C=C(\\C)CC[C@@H](O)C/C=C(\\C)C(=O)CC(=O)O",
   "MCS Similarity": 0.8620689655172413,
-  "Initial Jaccard Similarity": 0.28271484375,
-  "Final Jaccard Similarity": 0.318359375
+  "Initial Jaccard Similarity": 0.2802734375,
+  "Final Jaccard Similarity": 0.31884765625
 }
