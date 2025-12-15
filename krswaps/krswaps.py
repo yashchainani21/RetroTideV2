@@ -301,15 +301,6 @@ def extract_precursor_mol(mol: Chem.Mol, precursor_atoms: set) -> Chem.Mol:
     for atom_idx in remove_atoms:
         editable_target.RemoveAtom(atom_idx)
     precursor_mol = editable_target.GetMol()
-    try:
-        Chem.SanitizeMol(precursor_mol,
-                         sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_VALENCE)
-    except Exception:
-        try:
-            Chem.SanitizeMol(precursor_mol,
-                             sanitizeOps=Chem.SANITIZE_ALL^Chem.SANITIZE_PROPERTIES^Chem.SANITIZE_VALENCE)
-        except Exception:
-            pass
     return precursor_mol
 
 def get_pks_target(unbound_mol: Chem.Mol, mol: Chem.Mol) -> tuple[Chem.Mol, float]:
