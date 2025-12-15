@@ -4,7 +4,7 @@
   "Final PKS Design": [
     [
       "M0",
-      "AT Substrate: prop",
+      "AT Substrate: Methylmalonyl-CoA",
       "Reductive Loop: None"
     ],
     [
@@ -40,6 +40,6 @@
   ],
   "Final PKS Product": "CC[C@H]1OC(=O)[C@H](C)C(=O)[C@H](C)[C@@H](O)[C@@H](C)C[C@@H](C)C(=O)/C=C/[C@H]1C",
   "MCS Similarity": 1.0,
-  "Initial Jaccard Similarity": 0.599609375,
+  "Initial Jaccard Similarity": 0.556640625,
   "Final Jaccard Similarity": 1.0
 }
