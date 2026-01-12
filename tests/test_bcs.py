@@ -781,7 +781,8 @@ class TestER(unittest.TestCase):
         self.assertTrue(any(er.active for er in result))
         self.assertTrue(any(not er.active for er in result))
 
-    def test_er_operation_success(self):
+    @parameterized.expand(['L', 'D'])
+    def test_er_operation_success(self, er_type):
         """Test ER operation success without handling ValueError."""
         with patch('rdkit.Chem.AllChem.ReactionFromSmarts') as mock_reaction_from_smarts, \
             patch('rdkit.Chem.MolToSmiles') as mock_mol_to_smiles, \
@@ -798,7 +799,7 @@ class TestER(unittest.TestCase):
             chain_mock.GetSubstructMatches.return_value = ((1,),)
 
             # Instantiate ER and call the operation method
-            er_instance = ER(True, 'L')
+            er_instance = ER(True, er_type)
             result = er_instance.operation(chain_mock)
 
             # Assertions
@@ -828,7 +829,8 @@ class TestER(unittest.TestCase):
         # Check that the assertion error message contains the expected SMILES string
         self.assertIn('mocked SMILES string', str(context.exception))
 
-    def test_er_operation_handle_value_error(self):
+    @parameterized.expand(['L', 'D'])
+    def test_er_operation_handle_value_error(self, er_type):
         """Test ER operation retries the reaction after ValueError."""
         with patch('rdkit.Chem.AllChem.ReactionFromSmarts') as mock_reaction_from_smarts, \
              patch('rdkit.Chem.MolToSmiles') as mock_mol_to_smiles, \
@@ -846,7 +848,7 @@ class TestER(unittest.TestCase):
             chain_mock.GetSubstructMatches.return_value = ((1,),)
 
             # Instantiate ER and call the operation method
-            er_instance = ER(True, 'L')
+            er_instance = ER(True, er_type)
             result = er_instance.operation(chain_mock)
 
             # Assertions
