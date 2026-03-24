@@ -1380,12 +1380,18 @@ def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_resul
     AllChem.Compute2DCoords(mol1)
     AllChem.GenerateDepictionMatching2DStructure(mol2, mol1, acceptFailure=True)
 
-    return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
+    svg = Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'],
                                 molsPerRow=2, highlightAtomLists=[all_1, all_2],
                                 highlightAtomColors=[highlight_1, highlight_2],
-                                highlightBondLists=[bond_indices_1, bond_indices_2], 
-                                useSVG=True, 
+                                highlightBondLists=[bond_indices_1, bond_indices_2],
+                                useSVG=True,
                                 subImgSize=(500, 400))
+    
+    svg = svg.replace(
+        "width='500.0' height='400.0' x='0.0' y='0.0'",
+        "width='1000.0' height='400.0' x='0.0' y='0.0'"
+    )
+    return svg
 
 def compute_jaccard_sim(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     """
