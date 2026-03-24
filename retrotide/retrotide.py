@@ -62,6 +62,7 @@ def compareToTarget(structure: Mol,
 
     # remove C(=O)S from testProduct before comparison
     testProduct = Chem.rdmolops.ReplaceSubstructs(structure, Chem.MolFromSmiles('C(=O)S'), Chem.MolFromSmiles('C'))[0]
+    testProduct = Chem.MolFromSmiles(Chem.MolToSmiles(testProduct, isomericSmiles=True))
     
     if similarity=='mcs':
         # MCS
