@@ -187,11 +187,11 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
     Chem.SanitizeMol(pks_product)
     thioester_pattern = '[C:1](=[O:2])[S:3]'
     thioester_matches = substructure_search(pks_product, thioester_pattern)
-    c_idx, o_idx, s_idx = thioester_matches[0]
-    carbonyl_c_idx = thioester_matches[0][0]
+    if thioester_matches:
+        c_idx, o_idx, s_idx = thioester_matches[0]
+        carbonyl_c_idx = thioester_matches[0][0]
     if not thioester_matches:
-        print("Warning: No thioester found")
-        return (pks_product,)
+        raise ValueError('No thioester found. Cannot offload the PKS bound product.')
 
     if release_mechanism == 'thiolysis':
         editable_product = Chem.EditableMol(pks_product)
@@ -226,11 +226,10 @@ def te_offload(pks_product: Chem.Mol, mol: Chem.Mol, release_mechanism: str) -> 
                     unbound_mol = editable_product.GetMol()
                     Chem.SanitizeMol(unbound_mol)
                     return (unbound_mol,)
-            print(f"No hydroxyl group found at the target distance {target_size}. Cannot cyclize")
-            return (pks_product,)
-        print("Warning: No valid lactone found in target")
-        return (pks_product,)
-    return (pks_product,)
+            raise ValueError(f"No hydroxyl group found at the target distance {target_size}. Cannot cyclize")
+        raise ValueError("No valid lactone found in target molecule. Cannot cyclize.")
+    if release_mechanism not in ['thiolysis', 'cyclization']:
+        raise ValueError("Invalid release mechanism. Choose 'thiolysis' or 'cyclization'.")
 
 def get_retro_tide_results(target: str, stereo: str, offload_mech: str) -> tuple[Chem.Mol, dict]:
     """
@@ -1381,12 +1380,18 @@ def visualize_stereo_correspondence(mol1: Chem.Mol, mol2: Chem.Mol, chiral_resul
     AllChem.Compute2DCoords(mol1)
     AllChem.GenerateDepictionMatching2DStructure(mol2, mol1, acceptFailure=True)
 
-    return Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'], 
+    svg = Draw.MolsToGridImage([mol1, mol2], legends=['PKS Product', 'Target'],
                                 molsPerRow=2, highlightAtomLists=[all_1, all_2],
                                 highlightAtomColors=[highlight_1, highlight_2],
-                                highlightBondLists=[bond_indices_1, bond_indices_2], 
-                                useSVG=True, 
+                                highlightBondLists=[bond_indices_1, bond_indices_2],
+                                useSVG=True,
                                 subImgSize=(500, 400))
+    
+    svg = svg.replace(
+        "width='500.0' height='400.0' x='0.0' y='0.0'",
+        "width='1000.0' height='400.0' x='0.0' y='0.0'"
+    )
+    return svg
 
 def compute_jaccard_sim(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     """
